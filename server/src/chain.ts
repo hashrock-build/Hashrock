@@ -62,29 +62,37 @@ export async function tokenBalance(address: string): Promise<number> {
   } catch { return 0; }
 }
 
-/** Robust treasury-signed send: priority fee + manual getSignatureStatus polling with a BOUNDED
- *  timeout that THROWS. We do NOT use sendAndConfirmTransaction / `transfer()` here — their
- *  websocket signature-subscribe hangs forever on some RPCs (Helius), which made redeem "no
- *  response". Throwing on timeout lets the caller refund instead of hanging. */
-async function treasurySend(instructions: TransactionInstruction[], timeoutMs = 45000): Promise<string> {
-  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("finalized");
-  const tx = new Transaction({ feePayer: treasury.publicKey, recentBlockhash: blockhash }).add(
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 300_000 }), // priority fee — devnet drops fee-less txs
-    ...instructions,
-  );
-  tx.sign(treasury);
-  const raw = tx.serialize();
-  const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 10 });
-  const deadline = Date.now() + timeoutMs;
+/** Robust treasury-signed send: priority fee + manual getSignatureStatus polling, retried across
+ *  several FRESH blockhashes, with a BOUNDED total deadline that THROWS. We do NOT use
+ *  sendAndConfirmTransaction / `transfer()` here — their websocket signature-subscribe hangs
+ *  forever on some RPCs (Helius), which made redeem "no response". Throwing lets the caller
+ *  refund instead of hanging. Devnet frequently drops txs even with a fee; retrying across
+ *  blockhashes maximizes the chance of inclusion when the cluster is marginal. */
+async function treasurySend(instructions: TransactionInstruction[], deadlineMs = 90000): Promise<string> {
+  const deadline = Date.now() + deadlineMs;
+  let lastErr = "confirmation timed out";
   while (Date.now() < deadline) {
-    const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true })).value;
-    if (st?.err) throw new Error("tx failed: " + JSON.stringify(st.err));
-    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig;
-    if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) throw new Error("blockhash expired before confirmation");
-    await conn.sendRawTransaction(raw, { skipPreflight: true }).catch(() => {}); // re-broadcast
-    await new Promise((r) => setTimeout(r, 2500));
+    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("finalized");
+    const tx = new Transaction({ feePayer: treasury.publicKey, recentBlockhash: blockhash }).add(
+      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000 }), // priority fee — devnet drops fee-less txs
+      ...instructions,
+    );
+    tx.sign(treasury);
+    const raw = tx.serialize();
+    let sig: string;
+    try { sig = await conn.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 10 }); }
+    catch (e) { lastErr = (e as Error).message; await new Promise((r) => setTimeout(r, 1500)); continue; }
+    // poll this blockhash's window
+    while (Date.now() < deadline) {
+      const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true })).value;
+      if (st?.err) throw new Error("tx failed: " + JSON.stringify(st.err)); // on-chain reject → don't retry
+      if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig;
+      if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) { lastErr = "blockhash expired"; break; } // → fresh blockhash
+      await conn.sendRawTransaction(raw, { skipPreflight: true }).catch(() => {}); // re-broadcast
+      await new Promise((r) => setTimeout(r, 2000));
+    }
   }
-  throw new Error("confirmation timed out");
+  throw new Error(lastErr);
 }
 
 /** Send `amount` $HASHROCK from the treasury to `dest`. Returns the tx signature. */

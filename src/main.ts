@@ -250,7 +250,7 @@ async function main(): Promise<void> {
     if (amt <= 0) return void toast("enter a redeem amount");
     if (amt > world.coins) return void toast("not enough coins");
     ($("redeemconfirm") as HTMLButtonElement).disabled = true; // prevent double-submit during on-chain release
-    toast("releasing $HASHROCK on-chain… (up to ~45s)");
+    toast("releasing $HASHROCK on-chain… (devnet can take ~1–2 min)");
     net!.room.send("redeem", { amount: amt });
   });
   $("disconnect").addEventListener("click", async () => {
