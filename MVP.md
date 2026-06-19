@@ -136,7 +136,10 @@ REDEEM  : MANUAL, accumulate freely. Min 10 $TOKEN. Server signs → contract re
 ```yaml
 token:   { supply: 1_000_000_000, pool_seed: 100_000_000, rate: 1, min_redeem: 10, redeem_cooldown_sec: 0 }
 mining:  { map_size: 112, hash_digits: 4, interval_sec: 60, ore_hp: 100, ore_cap: 150,
-           ore_per_day: 1440, daily_emission: 0.10, reward_k: 0.0000694, reward_floor: 1 }
+           base_mine_time_sec: 30, ore_per_day: 1440, daily_emission: 0.10,
+           reward_k: 0.0000694, reward_floor: 1 }
+# Mining is time-based: DPS = ore_hp / base_mine_time × throughput. 1x=30s/ore, 6x(maxed)=5s.
+# Multi-user: reward_i = payout_ore × (damage_i / ore_hp) = throughput_i / Σ throughput.
 sinks:   { creator_fee: 0.05, pool_fee: 0.95, marketplace_fee: 0.05,
            cosmetic_split: { pool: 0.50, creator: 0.40, treasury: 0.10 } }
 upgrade: { tracks: [axe, speed, char_level], levels: 10, max_gap: 6.0,

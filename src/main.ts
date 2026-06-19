@@ -22,8 +22,6 @@ async function main(): Promise<void> {
   const world = new World(app, { groundTiles, crystals, playerAnims, props });
   if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
     (window as unknown as { world: World }).world = world; // dev inspector
-  if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
-    (window as unknown as { world: World }).world = world; // dev inspector
 
   const countEl = document.getElementById("count")!;
   const coinsEl = document.getElementById("coins")!;
@@ -46,7 +44,7 @@ async function main(): Promise<void> {
   world.onChange = render;
   render();
 
-  // Demo sink: spend coins on an upgrade → 95% back to pool, 5% to creator.
+  // DEMO sink (visualizes the 95%→pool / 5%→creator split). Production: on-chain $HASHROCK.
   upgradeBtn.addEventListener("click", () => world.payUpgrade(UPGRADE_COST));
 
   const spawn = () => {

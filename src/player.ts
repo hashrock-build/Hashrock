@@ -55,7 +55,6 @@ export class Player {
   private anims: PlayerAnims;
   private state: State = "idle";
   private baseScale: number;
-  private mining = false;
 
   constructor(anims: PlayerAnims, scale = 2) {
     this.anims = anims;
@@ -68,43 +67,14 @@ export class Player {
     this.apply();
   }
 
-  /** Update walk/idle state and facing from the movement vector. */
-  setMovement(facing: Facing, moving: boolean): void {
-    if (this.mining) {
-      this.facing = facing; // remember for when the swing ends
-      return;
-    }
-    const next: State = moving ? "walk" : "idle";
+  /** Drive the animation each frame from movement + mining. Priority: mine > walk > idle. */
+  update(facing: Facing, moving: boolean, mining: boolean): void {
+    const next: State = mining ? "crush" : moving ? "walk" : "idle";
     if (next !== this.state || facing !== this.facing) {
       this.state = next;
       this.facing = facing;
       this.apply();
     }
-  }
-
-  /** Play the mining swing once, then return to idle/walk. */
-  mine(onHit?: () => void): void {
-    if (this.mining) return;
-    this.mining = true;
-    this.state = "crush";
-    this.apply();
-    this.sprite.loop = false;
-    this.sprite.gotoAndPlay(0);
-    let hit = false;
-    this.sprite.onFrameChange = (f) => {
-      if (!hit && f >= Math.floor(this.sprite.totalFrames / 2)) {
-        hit = true;
-        onHit?.(); // land the damage mid-swing
-      }
-    };
-    this.sprite.onComplete = () => {
-      this.sprite.onComplete = undefined;
-      this.sprite.onFrameChange = undefined;
-      this.sprite.loop = true;
-      this.mining = false;
-      this.state = "idle";
-      this.apply();
-    };
   }
 
   private dir3(): { set: Dir3; flip: boolean } {
@@ -121,8 +91,9 @@ export class Player {
     const frames = this.anims[this.state][set];
     if (this.sprite.textures !== frames) {
       this.sprite.textures = frames;
+      this.sprite.loop = true; // all states loop now (crush = continuous mining)
       this.sprite.animationSpeed = this.state === "crush" ? 0.28 : this.state === "walk" ? 0.16 : 0.1;
-      if (this.state !== "crush") this.sprite.play();
+      this.sprite.gotoAndPlay(0);
     }
     this.sprite.scale.x = flip ? -this.baseScale : this.baseScale;
     this.sprite.scale.y = this.baseScale;
