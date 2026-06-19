@@ -24,6 +24,7 @@ export class PlayerState extends Schema {
   @type("number") hat = 0;         // hat cosmetic id
   @type("number") axe = 0;         // equipped axe rarity id (drives throughput)
   @type("number") axesOwned = 1;   // owned axes bitmask (bit i = axe i; bit 0 = free Wooden)
+  @type("number") axeLevels = 0;   // per-tier level packed 4 bits/tier (0 = level 1); upgraded 1→10
   @type("number") skinsOwned = 1;  // owned color-skins bitmask (bit i = skin i; bit 0 = free Grey)
   @type("number") durability = 100; // axe durability; drops while mining, restored by repair
 }

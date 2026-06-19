@@ -12,7 +12,8 @@ import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
 import * as chain from "../chain";
 import * as gen from "../../../shared/mapgen";
-import { SKINS, HAIRS, HATS, AXES, axeMult, axePrice, skinPrice } from "../../../shared/items";
+import { SKINS, HAIRS, HATS, AXES, axePrice, skinPrice,
+  AXE_MAX_LEVEL, axeLevel, setAxeLevelBits, effAxeMult, axeUpgradeCost } from "../../../shared/items";
 
 const TILE = gen.TILE;
 const MAP_W = gen.MAP_W, MAP_H = gen.MAP_H;
@@ -81,6 +82,8 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("confirmAxePurchase", (client, m: { axe: number; sig: string }) => this.onConfirmAxePurchase(client, m));
     this.onMessage("buildSkinPurchase", (client, m: { skin: number }) => this.onBuildSkinPurchase(client, m));
     this.onMessage("confirmSkinPurchase", (client, m: { skin: number; sig: string }) => this.onConfirmSkinPurchase(client, m));
+    this.onMessage("buildAxeUpgrade", (client, m: { tier: number }) => this.onBuildAxeUpgrade(client, m));
+    this.onMessage("confirmAxeUpgrade", (client, m: { tier: number; sig: string }) => this.onConfirmAxeUpgrade(client, m));
     this.onMessage("buildRepair", (client) => this.onBuildRepair(client));
     this.onMessage("confirmRepair", (client, m: { sig: string }) => this.onConfirmRepair(client, m));
     this.onMessage("getHashrock", (client) => this.sendHashrock(client));
@@ -112,9 +115,9 @@ export class MineRoom extends Room<MineState> {
     p.x = c.x; p.y = c.y;
     p.name = prof.name; p.coins = prof.coins;
     p.body = prof.body; p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axesOwned = prof.axesOwned;
-    p.skinsOwned = prof.skinsOwned;
+    p.axeLevels = prof.axeLevels; p.skinsOwned = prof.skinsOwned;
     p.durability = prof.durability;
-    p.throughput = axeMult(prof.axe);
+    p.throughput = effAxeMult(prof.axe, axeLevel(prof.axeLevels, prof.axe));
     this.state.players.set(client.sessionId, p);
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
   }
@@ -195,7 +198,7 @@ export class MineRoom extends Room<MineState> {
     if (slot === "axe" && !(p.axesOwned & (1 << v))) { client.send("buyErr", { msg: "buy this axe first" }); return; }
     if (slot === "skin" && !(p.skinsOwned & (1 << v))) { client.send("buyErr", { msg: "buy this color skin first" }); return; }
     p[slot] = v;
-    if (slot === "axe") p.throughput = axeMult(v);
+    if (slot === "axe") p.throughput = effAxeMult(v, axeLevel(p.axeLevels, v));
     persist(db.setSlot(this.pid.get(client.sessionId)!, slot, v));
   }
 
@@ -227,7 +230,7 @@ export class MineRoom extends Room<MineState> {
       if (!dep || dep.amount < price || dep.source !== dest) return void client.send("buyErr", { msg: "payment not verified" });
       const cut = Math.round(price * CREATOR_FEE);
       if (!(await db.persistAxeBuy(this.pid.get(client.sessionId)!, axe, price, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
-      p.axe = axe; p.axesOwned |= (1 << axe); p.throughput = axeMult(axe);
+      p.axe = axe; p.axesOwned |= (1 << axe); p.throughput = effAxeMult(axe, axeLevel(p.axeLevels, axe));
       this.state.pool += price - cut; this.state.creator += cut; this.refreshTreasury();
       client.send("buyOk", { axe, sig, url: chain.explorer(sig) });
       this.sendHashrock(client);
@@ -265,6 +268,47 @@ export class MineRoom extends Room<MineState> {
       client.send("skinOk", { skin, sig, url: chain.explorer(sig) });
       this.sendHashrock(client);
     } catch (e) { client.send("buyErr", { msg: "skin verify failed" }); console.error("[buyskin]", e); }
+  }
+
+  // On-chain axe LEVEL upgrade. Step 1: build the $HASHROCK transfer for the wallet to sign.
+  private async onBuildAxeUpgrade(client: Client, m: { tier: number }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const tier = Math.floor(m?.tier ?? 0);
+    if (!p) return;
+    if (!dest) return void client.send("buyErr", { msg: "connect your wallet first" });
+    if (tier < 0 || tier >= AXES.length) return void client.send("buyErr", { msg: "invalid axe" });
+    if (!(p.axesOwned & (1 << tier))) return void client.send("buyErr", { msg: "you don't own this axe" });
+    const lvl = axeLevel(p.axeLevels, tier);
+    if (lvl >= AXE_MAX_LEVEL) return void client.send("buyErr", { msg: "already max level" });
+    try {
+      const txb64 = await chain.buildPurchaseTx(dest, axeUpgradeCost(tier, lvl));
+      client.send("purchaseTx", { kind: "upgrade", tier, price: axeUpgradeCost(tier, lvl), tx: txb64 });
+    } catch (e) { client.send("buyErr", { msg: "need $HASHROCK in your wallet" }); console.error("[upgrade]", e); }
+  }
+  // Step 2: wallet paid → verify it hit the treasury, bump the tier's level, route 95/5 (dedupe by sig).
+  private async onConfirmAxeUpgrade(client: Client, m: { tier: number; sig: string }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const tier = Math.floor(m?.tier ?? 0), sig = (m?.sig ?? "").trim();
+    if (!p || !dest || !sig || tier < 0 || tier >= AXES.length) return void client.send("buyErr", { msg: "bad request" });
+    if (!(p.axesOwned & (1 << tier))) return void client.send("buyErr", { msg: "you don't own this axe" });
+    const lvl = axeLevel(p.axeLevels, tier);
+    if (lvl >= AXE_MAX_LEVEL) return void client.send("buyErr", { msg: "already max level" });
+    const newLevel = lvl + 1;
+    const price = axeUpgradeCost(tier, lvl);
+    const packed = setAxeLevelBits(p.axeLevels, tier, newLevel);
+    try {
+      const dep = await chain.verifyDepositRetry(sig);
+      if (!dep || dep.amount < price || dep.source !== dest) return void client.send("buyErr", { msg: "payment not verified" });
+      const cut = Math.round(price * CREATOR_FEE);
+      if (!(await db.persistAxeUpgrade(this.pid.get(client.sessionId)!, tier, newLevel, packed, price, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
+      p.axeLevels = packed;
+      if (p.axe === tier) p.throughput = effAxeMult(tier, newLevel); // refresh live throughput if equipped
+      this.state.pool += price - cut; this.state.creator += cut; this.refreshTreasury();
+      client.send("upgradeOk", { tier, level: newLevel, sig, url: chain.explorer(sig) });
+      this.sendHashrock(client);
+    } catch (e) { client.send("buyErr", { msg: "upgrade verify failed" }); console.error("[upgrade]", e); }
   }
 
   // On-chain repair (fixed cost): restore durability to 100, route 95% pool / 5% creator.

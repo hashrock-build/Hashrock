@@ -53,6 +53,8 @@ export async function initSchema(seedPool: number): Promise<void> {
       (SELECT bit_or(1 << ((l.meta->>'axe')::int)) FROM ledger l
        WHERE l.kind = 'buy_axe' AND l.player_id = p.id AND (l.meta->>'axe') IS NOT NULL), 0)
     WHERE p.axes_owned = 1`);
+  // per-tier axe levels, packed 4 bits/tier (0 = level 1); upgraded on-chain
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS axe_levels INT NOT NULL DEFAULT 0`);
   // seed economy: pool = seed, treasury backs it 1:1 (= seed), creator = 0
   await pool.query(
     `INSERT INTO economy (id, pool, creator, treasury) VALUES (1, $1, 0, $1)
@@ -111,13 +113,13 @@ export async function getEconomy(): Promise<Economy> {
   return { pool: n(rows[0].pool), creator: n(rows[0].creator), treasury: n(rows[0].treasury) };
 }
 
-export interface Profile { coins: number; body: number; skin: number; hair: number; hat: number; axe: number; axesOwned: number; skinsOwned: number; durability: number; name: string; }
+export interface Profile { coins: number; body: number; skin: number; hair: number; hat: number; axe: number; axesOwned: number; axeLevels: number; skinsOwned: number; durability: number; name: string; }
 /** Create the player row if missing (without clobbering a saved username); returns profile. */
 export async function ensurePlayer(id: string, name: string): Promise<Profile> {
   await pool.query(`INSERT INTO players (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, name]);
-  const { rows } = await pool.query(`SELECT coins, body, skin, hair, hat, axe, axes_owned, skins_owned, durability, name FROM players WHERE id = $1`, [id]);
+  const { rows } = await pool.query(`SELECT coins, body, skin, hair, hat, axe, axes_owned, axe_levels, skins_owned, durability, name FROM players WHERE id = $1`, [id]);
   const r = rows[0];
-  return { coins: n(r.coins), body: n(r.body), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axesOwned: n(r.axes_owned), skinsOwned: n(r.skins_owned), durability: n(r.durability), name: r.name };
+  return { coins: n(r.coins), body: n(r.body), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axesOwned: n(r.axes_owned), axeLevels: n(r.axe_levels), skinsOwned: n(r.skins_owned), durability: n(r.durability), name: r.name };
 }
 export async function setDurability(id: string, durability: number): Promise<void> {
   await pool.query(`UPDATE players SET durability = $2 WHERE id = $1`, [id, durability]);
@@ -147,6 +149,20 @@ export async function persistAxeBuy(playerId: string, axe: number, price: number
   });
   return true;
 }
+/** On-chain axe LEVEL upgrade: $HASHROCK landed in treasury → write the new packed levels +
+ * route 95% pool / 5% creator. Dedupes by sig. */
+export async function persistAxeUpgrade(playerId: string, tier: number, newLevel: number, packed: number, price: number, cut: number, sig: string): Promise<boolean> {
+  const dup = await pool.query(`SELECT 1 FROM ledger WHERE kind = 'upgrade_axe' AND meta->>'sig' = $1 LIMIT 1`, [sig]);
+  if (dup.rowCount) return false;
+  await tx(async (c) => {
+    await c.query(`UPDATE players SET axe_levels = $2 WHERE id = $1`, [playerId, packed]);
+    await c.query(`UPDATE economy SET treasury = treasury + $1, pool = pool + $2, creator = creator + $3 WHERE id = 1`, [price, price - cut, cut]);
+    await c.query(`INSERT INTO ledger (kind, player_id, amount, pool_delta, creator_delta, treasury_delta, meta) VALUES ('upgrade_axe', $1, $2, $3, $4, $5, $6)`,
+      [playerId, 0, price - cut, cut, price, JSON.stringify({ sig, tier, level: newLevel, price })]);
+  });
+  return true;
+}
+
 /** On-chain color-skin purchase: $HASHROCK landed in treasury → grant + equip the skin
  * (set its bit in skins_owned) + route 95% pool / 5% creator. Dedupes by sig. */
 export async function persistSkinBuy(playerId: string, skin: number, price: number, cut: number, sig: string): Promise<boolean> {

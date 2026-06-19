@@ -52,3 +52,20 @@ export const AXES: Axe[] = [
 export const axePrice = (id: number): number => AXES[id]?.price ?? 0;
 
 export const axeMult = (id: number): number => AXES[id]?.mult ?? 1;
+
+// ----- Axe LEVELS (separate from tier). Every OWNED tier can be leveled 1→10. A level boosts
+// the tier's mining throughput; leveling is an on-chain $HASHROCK sink (95% pool / 5% creator).
+// Levels are packed 4 bits per tier into one integer (tier i → nibble i; 0 = level 1).
+export const AXE_MAX_LEVEL = 10;
+export const LEVEL_STEP = 0.08; // +8% throughput per level over base tier mult
+/** Read a tier's level (1..10) out of the packed integer. */
+export const axeLevel = (packed: number, tier: number): number => ((packed >> (tier * 4)) & 0xf) || 1;
+/** Write a tier's level into the packed integer. */
+export const setAxeLevelBits = (packed: number, tier: number, lvl: number): number =>
+  (packed & ~(0xf << (tier * 4))) | ((lvl & 0xf) << (tier * 4));
+/** Level multiplier on top of the tier mult. */
+export const axeLevelMult = (lvl: number): number => 1 + (lvl - 1) * LEVEL_STEP;
+/** Effective mining throughput = tier mult × level mult. */
+export const effAxeMult = (tier: number, lvl: number): number => axeMult(tier) * axeLevelMult(lvl);
+/** $HASHROCK cost to go from `fromLvl` → `fromLvl+1` for a tier (scales with tier & level). */
+export const axeUpgradeCost = (tier: number, fromLvl: number): number => (tier + 1) * fromLvl * 1000;

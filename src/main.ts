@@ -5,7 +5,7 @@ import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
 import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
 import { CharacterPreview } from "./preview";
-import { SKINS, AXES, RARITY_COLOR } from "../shared/items";
+import { SKINS, AXES, RARITY_COLOR, AXE_MAX_LEVEL, axeLevel, effAxeMult, axeUpgradeCost } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadCharacters } from "./player";
 import { loadProps } from "./props";
@@ -81,43 +81,49 @@ async function main(): Promise<void> {
   render();
 
   // ---- actions ----
-  // Upgrade: popup to pick an item (axe) and see current-vs-next level stats, then buy/equip.
-  let upSel = "axe"; // selected item to upgrade (only axe for now)
+  // Upgrade: pick an OWNED axe tier and level it up (1→10). Each level boosts mining throughput;
+  // paid on-chain in $HASHROCK. Tiers themselves are bought in the Marketplace.
+  let upTier = -1; // selected axe tier to level (-1 = default to equipped)
   const buildUpgrade = () => {
+    const owned = AXES.filter((a) => (world.axesOwned & (1 << a.id)) !== 0);
+    if (upTier < 0 || !(world.axesOwned & (1 << upTier))) upTier = world.axe; // default to equipped axe
+    // item chips = each owned axe tier
     const items = $("upItems"); items.innerHTML = "";
-    [{ key: "axe", label: "⛏ Axe" }].forEach((it) => {
+    owned.forEach((a) => {
+      const lvl = axeLevel(world.axeLevels, a.id);
       const c = document.createElement("div");
-      c.className = "chip" + (upSel === it.key ? " sel" : "");
-      c.textContent = it.label;
-      c.onclick = () => { upSel = it.key; buildUpgrade(); };
+      c.className = "chip" + (upTier === a.id ? " sel" : "");
+      c.innerHTML = `<img src="/assets/axes/axe_${a.id}.png" alt="">${a.name} · L${lvl}`;
+      c.onclick = () => { upTier = a.id; buildUpgrade(); };
       items.appendChild(c);
     });
-    const cur = AXES[world.axe] ?? AXES[0];
-    const nxt = AXES[world.axe + 1]; // the next tier up from what's equipped
+    const a = AXES[upTier] ?? AXES[0];
+    const lvl = axeLevel(world.axeLevels, a.id);
+    const atMax = lvl >= AXE_MAX_LEVEL;
+    const curMult = effAxeMult(a.id, lvl);
     const stats = $("upStats");
     const curCol =
-      `<div class="upcol"><div class="lbl">current</div>` +
-      `<div class="tier"><img src="/assets/axes/axe_${cur.id}.png">${cur.name}</div>` +
-      `<div class="srow">mining <span>${cur.mult}×</span></div>` +
-      `<div class="srow">durability <span>${world.durability}%</span></div>` +
-      `<div class="srow">tier <span>${cur.id + 1}/${AXES.length}</span></div></div>`;
+      `<div class="upcol"><div class="lbl">current · level ${lvl}/${AXE_MAX_LEVEL}</div>` +
+      `<div class="tier"><img src="/assets/axes/axe_${a.id}.png">${a.name}</div>` +
+      `<div class="srow">mining <span>${curMult.toFixed(2)}×</span></div>` +
+      `<div class="srow">tier base <span>${a.mult}×</span></div></div>`;
     const upBtn = $("upAction") as HTMLButtonElement;
-    if (!nxt) {
+    if (atMax) {
       stats.innerHTML = `<div class="upcols">${curCol}</div>`;
-      upBtn.textContent = "Max tier reached"; upBtn.disabled = true; upBtn.onclick = null;
+      upBtn.textContent = `${a.name} is max level (${AXE_MAX_LEVEL})`; upBtn.disabled = true; upBtn.onclick = null;
     } else {
-      const owned = (world.axesOwned & (1 << nxt.id)) !== 0;
-      const gain = `+${Math.round((nxt.mult / cur.mult - 1) * 100)}% mining`;
+      const nextMult = effAxeMult(a.id, lvl + 1);
+      const cost = axeUpgradeCost(a.id, lvl);
+      const gain = `+${Math.round((nextMult / curMult - 1) * 100)}%`;
       stats.innerHTML =
         `<div class="upcols">${curCol}<div class="uparrow">→</div>` +
-        `<div class="upcol next"><div class="lbl">after upgrade</div>` +
-        `<div class="tier"><img src="/assets/axes/axe_${nxt.id}.png">${nxt.name}</div>` +
-        `<div class="srow">mining <span>${nxt.mult}× <span style="color:#8ef5a8">(${gain})</span></span></div>` +
-        `<div class="srow">durability <span>100%</span></div>` +
-        `<div class="srow">tier <span>${nxt.id + 1}/${AXES.length}</span></div></div></div>`;
+        `<div class="upcol next"><div class="lbl">level ${lvl + 1}/${AXE_MAX_LEVEL}</div>` +
+        `<div class="tier"><img src="/assets/axes/axe_${a.id}.png">${a.name}</div>` +
+        `<div class="srow">mining <span>${nextMult.toFixed(2)}× <span style="color:#8ef5a8">(${gain})</span></span></div>` +
+        `<div class="srow">tier base <span>${a.mult}×</span></div></div></div>`;
       upBtn.disabled = false;
-      upBtn.textContent = owned ? `Equip ${nxt.name}` : `Upgrade to ${nxt.name} — ${fmt(nxt.price)} $HASHROCK`;
-      upBtn.onclick = () => net!.room.send(owned ? "setAxe" : "buildAxePurchase", { axe: nxt.id });
+      upBtn.textContent = `Upgrade to L${lvl + 1} — ${fmt(cost)} $HASHROCK`;
+      upBtn.onclick = () => net!.room.send("buildAxeUpgrade", { tier: a.id });
     }
   };
   upgradeBtn.addEventListener("click", () => { buildUpgrade(); showModal("upgradeModal"); });
@@ -203,7 +209,7 @@ async function main(): Promise<void> {
       const owned = (world.axesOwned & (1 << a.id)) !== 0;
       const c = document.createElement("div");
       c.className = "chip" + (world.axe === a.id ? " sel" : "");
-      const label = owned ? `${a.name} · ${a.mult}×` : `${a.name} · ${a.mult}× · buy ${fmt(a.price)}`;
+      const label = owned ? `${a.name} · L${axeLevel(world.axeLevels, a.id)} · ${effAxeMult(a.id, axeLevel(world.axeLevels, a.id)).toFixed(2)}×` : `${a.name} · ${a.mult}× · buy ${fmt(a.price)}`;
       c.innerHTML = `<img src="/assets/axes/axe_${a.id}.png" alt="">${label}`;
       c.onclick = () => net!.room.send(owned ? "setAxe" : "buildAxePurchase", { axe: a.id });
       ap.appendChild(c);
@@ -224,13 +230,14 @@ async function main(): Promise<void> {
   net.room.onMessage("redeemErr", (m: { msg: string }) => { ($("redeemconfirm") as HTMLButtonElement).disabled = false; toast("⚠ redeem: " + m.msg); });
 
   // on-chain purchase (axe / color skin / repair): server builds tx → wallet signs+sends → server verifies + grants
-  net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; skin?: number; price: number; tx: string }) => {
+  net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; skin?: number; tier?: number; price: number; tx: string }) => {
     try {
       toast("approve the payment in your wallet…");
       const sig = await signAndSend(m.tx);
       toast("verifying on-chain…");
       if (m.kind === "repair") net!.room.send("confirmRepair", { sig });
       else if (m.kind === "skin") net!.room.send("confirmSkinPurchase", { skin: m.skin, sig });
+      else if (m.kind === "upgrade") net!.room.send("confirmAxeUpgrade", { tier: m.tier, sig });
       else net!.room.send("confirmAxePurchase", { axe: m.axe, sig });
     } catch (e) { toast("cancelled"); console.error(e); }
   });
@@ -241,6 +248,10 @@ async function main(): Promise<void> {
   net.room.onMessage("skinOk", (m: { skin: number; url: string }) => {
     buildPickers(); buildSkins(); updatePreview();
     showBuyDone("🎨", "✅ Skin Purchased", `${SKINS[m.skin]?.name} color skin equipped`, m.url);
+  });
+  net.room.onMessage("upgradeOk", (m: { tier: number; level: number; url: string }) => {
+    buildUpgrade(); buildPickers();
+    showBuyDone("⚒", "✅ Axe Upgraded", `${AXES[m.tier]?.name} is now level ${m.level}`, m.url);
   });
   net.room.onMessage("repairOk", (m: { url: string }) => {
     buildUpgrade();
