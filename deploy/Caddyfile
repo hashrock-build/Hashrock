@@ -1,0 +1,20 @@
+# Caddy auto-provisions Let's Encrypt TLS for both names (needs DNS A records → VPS IP + ports
+# 80/443 open). {$DOMAIN} serves the game; {$API_DOMAIN} reverse-proxies the Colyseus server
+# (Caddy upgrades WebSockets transparently). CORS for /stats is set by the server itself.
+
+{$DOMAIN} {
+	encode gzip zstd
+	root * /srv
+	file_server
+	# single-page entry: anything not a real file falls back to index.html
+	try_files {path} /index.html
+	header {
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Content-Type-Options nosniff
+	}
+}
+
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy server:2567
+}

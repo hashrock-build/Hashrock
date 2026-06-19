@@ -1,0 +1,71 @@
+# HASHROCK production stack — single VPS (e.g. Contabo). Postgres + authoritative server + Caddy
+# (serves the client + auto-TLS reverse-proxy). Configure ./.env (see .env.production.example),
+# upload server/.treasury.json, point DNS, then:  docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hashrock
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: hashrock
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hashrock -d hashrock"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # not published to the host — only the server container reaches it on the internal network
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://hashrock:${POSTGRES_PASSWORD}@db:5432/hashrock
+      PORT: 2567
+      POOL_SEED: ${POOL_SEED:-100000000}
+      DAILY_EMISSION: ${DAILY_EMISSION:-0.10}
+      ORE_PER_DAY: ${ORE_PER_DAY:-1440}
+      REWARD_FLOOR: ${REWARD_FLOOR:-1}
+      CREATOR_FEE: ${CREATOR_FEE:-0.05}
+      ORE_HP: ${ORE_HP:-100}
+      ORE_CAP: ${ORE_CAP:-150}
+      BASE_MINE_TIME_SEC: ${BASE_MINE_TIME_SEC:-30}
+      SPAWN_INTERVAL_SEC: ${SPAWN_INTERVAL_SEC:-60}
+      SOLANA_RPC: ${SOLANA_RPC:?set SOLANA_RPC in .env}
+      HASHROCK_MINT: ${HASHROCK_MINT:?set HASHROCK_MINT in .env}
+      TREASURY_ADDRESS: ${TREASURY_ADDRESS:?set TREASURY_ADDRESS in .env}
+      TREASURY_SECRET_PATH: /run/treasury/.treasury.json
+    volumes:
+      # treasury secret is mounted read-only at runtime — NEVER baked into the image or git
+      - ./server/.treasury.json:/run/treasury/.treasury.json:ro
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_SERVER_URL: wss://${API_DOMAIN:?set API_DOMAIN in .env}
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

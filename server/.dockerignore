@@ -1,0 +1,4 @@
+node_modules
+.treasury.json
+.env
+*.log

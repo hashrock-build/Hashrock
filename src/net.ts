@@ -2,7 +2,11 @@
 // shared "mine" room. A persistent playerId (localStorage) lets balances survive reloads.
 import { Client, Room, getStateCallbacks } from "colyseus.js";
 
-const SERVER_PORT = 2567;
+// Production sets VITE_SERVER_URL (e.g. wss://api.playhashrock.com) at build time; dev falls
+// back to the local Colyseus on :2567. httpBase derives the matching http(s) origin (for /stats).
+const SERVER_URL = ((import.meta as unknown as { env?: { VITE_SERVER_URL?: string } }).env?.VITE_SERVER_URL || "").replace(/\/$/, "");
+const wsBase = (): string => SERVER_URL || `ws://${location.hostname}:2567`;
+const httpBase = (): string => wsBase().replace(/^ws/, "http"); // ws→http, wss→https
 
 export function getPlayerId(): string {
   let id = localStorage.getItem("hashrock_pid");
@@ -16,7 +20,7 @@ export function getPlayerId(): string {
 export interface Net { room: Room; $: ReturnType<typeof getStateCallbacks>; }
 
 export async function connect(name = "miner", playerId = getPlayerId(), auth?: { msg: string; sig: string }): Promise<Net> {
-  const client = new Client(`ws://${location.hostname}:${SERVER_PORT}`);
+  const client = new Client(wsBase());
   const room = await client.joinOrCreate("mine", { playerId, name, msg: auth?.msg, sig: auth?.sig });
   const $ = getStateCallbacks(room);
   return { room, $ };
@@ -25,7 +29,7 @@ export async function connect(name = "miner", playerId = getPlayerId(), auth?: {
 /** Lightweight: live landing-page stats (miners online, active ore) via the server /stats route. */
 export async function roomStats(): Promise<{ online: number; ore: number; mint: string }> {
   try {
-    const res = await fetch(`http://${location.hostname}:${SERVER_PORT}/stats`);
+    const res = await fetch(`${httpBase()}/stats`);
     const j = await res.json();
     return { online: Number(j.online) || 0, ore: Number(j.ore) || 0, mint: String(j.mint || "") };
   } catch { return { online: 0, ore: 0, mint: "" }; }

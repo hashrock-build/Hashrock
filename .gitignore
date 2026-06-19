@@ -1,6 +1,12 @@
 node_modules
 dist
 
+# secrets / local config (NEVER commit) — keep the example template
+.env
+.env.*
+!.env.production.example
+**/.treasury.json
+
 # Source archives (already extracted into the repo)
 *.zip
 bundle/

@@ -1,0 +1,20 @@
+# build context = repo root for both Dockerfiles — keep it lean and SECRET-FREE
+node_modules
+**/node_modules
+dist
+server/.treasury.json
+server/.env
+.env
+.env.*
+!.env.production.example
+bundle/
+assets/
+generated-assets/
+*.zip
+*.rar
+*.gif
+*.png
+!public/**
+.git
+**/*.log
+MEMORY.md
