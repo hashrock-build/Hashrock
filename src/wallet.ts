@@ -37,10 +37,10 @@ export async function disconnectPhantom(): Promise<void> {
 
 /** Prove wallet ownership: sign a timestamped login message. The server verifies the
  *  ed25519 signature so the wallet address can safely be the player identity. */
-export async function signLogin(address: string): Promise<{ msg: string; sig: string } | null> {
+export async function signLogin(address: string, nonce: string): Promise<{ msg: string; sig: string } | null> {
   const p = getPhantom();
   if (!p?.signMessage) return null;
-  const msg = `HASHROCK login\n${address}\n${Date.now()}`;
+  const msg = `HASHROCK login\n${address}\n${nonce}`;
   try {
     const res = await p.signMessage(new TextEncoder().encode(msg), "utf8");
     const s = res.signature;

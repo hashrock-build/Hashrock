@@ -1,6 +1,6 @@
 import { Application } from "pixi.js";
 import { World } from "./world";
-import { connect, roomStats } from "./net";
+import { connect, roomStats, getNonce } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom, signLogin } from "./wallet";
 import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
@@ -337,8 +337,10 @@ function initLanding(): void {
     btns.forEach((b) => (b.disabled = true));
     const addr = await connectPhantom(false);
     if (!addr) { btns.forEach((b) => (b.disabled = false)); return void toast("connect your wallet to play"); }
+    const nonce = await getNonce(); // one-time, replay-safe
+    if (!nonce) { btns.forEach((b) => (b.disabled = false)); return void toast("server offline — try again"); }
     toast("sign the login request in your wallet…");
-    const auth = await signLogin(addr); // prove ownership → wallet becomes the account identity
+    const auth = await signLogin(addr, nonce); // prove ownership → wallet becomes the account identity
     btns.forEach((b) => (b.disabled = false));
     if (!auth) return void toast("wallet must support message signing to play");
     started = true;

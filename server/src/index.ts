@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { MineRoom, liveStats } from "./rooms/MineRoom";
+import { issueNonce } from "./nonce";
 import * as db from "./db";
 import * as chain from "./chain";
 
@@ -25,6 +26,11 @@ const httpServer = createServer((req, res) => {
   if (req.url === "/stats") { // live landing-page stats (CORS-open, public, read-only)
     res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
     res.end(JSON.stringify({ online: liveStats.online, ore: liveStats.ore, mint: chain.mintAddress() }));
+    return;
+  }
+  if (req.url === "/nonce") { // one-time login nonce (replay protection for wallet sign-in)
+    res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
+    res.end(JSON.stringify({ nonce: issueNonce() }));
     return;
   }
   res.writeHead(404); res.end();

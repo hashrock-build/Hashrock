@@ -19,6 +19,12 @@ export function getPlayerId(): string {
 
 export interface Net { room: Room; $: ReturnType<typeof getStateCallbacks>; }
 
+/** Fetch a one-time login nonce from the server (for replay-safe wallet sign-in). */
+export async function getNonce(): Promise<string | null> {
+  try { return String((await (await fetch(`${httpBase()}/nonce`)).json()).nonce || "") || null; }
+  catch { return null; }
+}
+
 export async function connect(name = "miner", playerId = getPlayerId(), auth?: { msg: string; sig: string }): Promise<Net> {
   const client = new Client(wsBase());
   const room = await client.joinOrCreate("mine", { playerId, name, msg: auth?.msg, sig: auth?.sig });

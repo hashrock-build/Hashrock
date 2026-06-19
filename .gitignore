@@ -5,7 +5,8 @@ dist
 .env
 .env.*
 !.env.production.example
-**/.treasury.json
+!**/*.example
+**/.treasury*.json
 
 # Source archives (already extracted into the repo)
 *.zip

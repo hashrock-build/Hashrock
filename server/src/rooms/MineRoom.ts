@@ -11,6 +11,7 @@ import { Room, Client } from "colyseus";
 import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
 import * as chain from "../chain";
+import { consumeNonce } from "../nonce";
 import * as gen from "../../../shared/mapgen";
 import { SKINS, HAIRS, HATS, AXES, axePrice, skinPrice,
   AXE_MAX_LEVEL, axeLevel, setAxeLevelBits, effAxeMult, axeUpgradeCost } from "../../../shared/items";
@@ -114,8 +115,9 @@ export class MineRoom extends Room<MineState> {
     const msg = opts.msg || "", sig = opts.sig || "";
     if (!chain.isValidAddress(addr)) throw new Error("connect a wallet to play");
     if (!msg.includes(addr) || !chain.verifyWalletSig(addr, msg, sig)) throw new Error("wallet signature invalid");
-    const ts = Number(msg.trim().split("\n").pop());
-    if (!ts || Math.abs(Date.now() - ts) > 5 * 60 * 1000) throw new Error("login expired — reconnect");
+    // the signed message ends with a server-issued one-time nonce — consume it (replay protection)
+    const nonce = (msg.trim().split("\n").pop() || "").trim();
+    if (!consumeNonce(nonce)) throw new Error("login expired — reconnect");
 
     const playerId = addr;
     const name = (opts.name || "miner").slice(0, 16);
@@ -380,7 +382,14 @@ export class MineRoom extends Room<MineState> {
       this.refreshTreasury();
 
     } catch (e) {
-      p.coins += amount;
+      if (e instanceof chain.TxUncertainError) {
+        // tx might still land — refunding here would risk a double-pay. Keep coins burned; the
+        // release either settles (player got paid) or is reconciled manually from the ledger.
+        client.send("redeemErr", { msg: "redeem is taking long to confirm — do NOT retry; check your wallet shortly" });
+        console.error("[redeem] UNCERTAIN — NOT refunded, reconcile manually:", playerId, amount, e);
+        return;
+      }
+      p.coins += amount; // definitive failure (erred / blockhash expired) → no funds moved → safe to refund
       await db.refundRedeem(playerId, amount);
       client.send("redeemErr", { msg: "on-chain transfer failed (refunded)" });
       console.error("[redeem]", e);

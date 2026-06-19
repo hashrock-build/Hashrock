@@ -82,37 +82,38 @@ export async function tokenBalance(address: string): Promise<number> {
   } catch { return 0; }
 }
 
-/** Robust treasury-signed send: priority fee + manual getSignatureStatus polling, retried across
- *  several FRESH blockhashes, with a BOUNDED total deadline that THROWS. We do NOT use
- *  sendAndConfirmTransaction / `transfer()` here — their websocket signature-subscribe hangs
- *  forever on some RPCs (Helius), which made redeem "no response". Throwing lets the caller
- *  refund instead of hanging. Devnet frequently drops txs even with a fee; retrying across
- *  blockhashes maximizes the chance of inclusion when the cluster is marginal. */
-async function treasurySend(instructions: TransactionInstruction[], deadlineMs = 90000): Promise<string> {
-  const deadline = Date.now() + deadlineMs;
-  let lastErr = "confirmation timed out";
-  while (Date.now() < deadline) {
-    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("finalized");
-    const tx = new Transaction({ feePayer: treasury.publicKey, recentBlockhash: blockhash }).add(
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000 }), // priority fee — devnet drops fee-less txs
-      ...instructions,
-    );
-    tx.sign(treasury);
-    const raw = tx.serialize();
-    let sig: string;
-    try { sig = await conn.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 10 }); }
-    catch (e) { lastErr = (e as Error).message; await new Promise((r) => setTimeout(r, 1500)); continue; }
-    // poll this blockhash's window
-    while (Date.now() < deadline) {
-      const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true })).value;
-      if (st?.err) throw new Error("tx failed: " + JSON.stringify(st.err)); // on-chain reject → don't retry
-      if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig;
-      if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) { lastErr = "blockhash expired"; break; } // → fresh blockhash
-      await conn.sendRawTransaction(raw, { skipPreflight: true }).catch(() => {}); // re-broadcast
-      await new Promise((r) => setTimeout(r, 2000));
-    }
+/** Thrown when a treasury send couldn't be confirmed AND couldn't be proven dead — the tx might
+ *  still land, so the caller MUST NOT refund (would risk a double-pay). Needs manual reconcile. */
+export class TxUncertainError extends Error {
+  constructor(public sig: string) { super(`tx unconfirmed and not provably expired (sig ${sig})`); }
+}
+
+/** SAFE treasury-signed send (mainnet-correct). Sends ONE transaction (one blockhash, one sig)
+ *  and re-broadcasts the SAME tx until it either confirms or its blockhash EXPIRES. A Solana tx
+ *  is includable only while blockHeight ≤ lastValidBlockHeight; once exceeded it can NEVER land,
+ *  so the caller can refund safely. We never resend with a fresh blockhash (that creates a second
+ *  sig that could double-pay). We avoid sendAndConfirmTransaction (its websocket confirm hangs on
+ *  some RPCs). Returns the sig on success; throws on definitive failure (safe to refund) or
+ *  TxUncertainError (do NOT refund). */
+async function treasurySend(instructions: TransactionInstruction[], hardCapMs = 180000): Promise<string> {
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+  const tx = new Transaction({ feePayer: treasury.publicKey, recentBlockhash: blockhash }).add(
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1_000_000 }), // priority fee
+    ...instructions,
+  );
+  tx.sign(treasury);
+  const raw = tx.serialize();
+  const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 0 }); // preflight catches bad txs before they cost anything
+  const stop = Date.now() + hardCapMs;
+  while (Date.now() < stop) {
+    const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true })).value;
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig; // ✅ settled
+    if (st?.err) throw new Error("tx failed on-chain: " + JSON.stringify(st.err)); // erred → no funds moved → safe to refund
+    if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) throw new Error("blockhash expired — tx can never land (safe to refund)");
+    await conn.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }).catch(() => {}); // re-broadcast the SAME tx (idempotent)
+    await new Promise((r) => setTimeout(r, 2000));
   }
-  throw new Error(lastErr);
+  throw new TxUncertainError(sig); // near-impossible (cap >> blockhash validity); never refund on this
 }
 
 /** Send `amount` $HASHROCK from the treasury to `dest`. Returns the tx signature. */

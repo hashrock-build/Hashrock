@@ -8,16 +8,17 @@ skip the 🔴 items. The economy is only as safe as its weakest accounting path 
 
 ## A. Code hardening (do BEFORE touching mainnet)
 
-- 🔴 **Redeem refund must be idempotent.** Today, if the on-chain release times out, the server
-  refunds the burned coins. On devnet we saw a desynced RPC report "timed out" for txs that
-  actually landed → a refund would double-pay (tokens out **and** coins back). Before mainnet:
-  on timeout, **re-verify the signature didn't land** (and scan recent treasury outflows) before
-  refunding; never refund a tx that may have settled. Use a single authoritative RPC and a long
-  confirmation deadline. (`treasurySend` already retries across blockhashes; the refund path is
-  the gap.)
-- 🔴 **Login replay window.** Wallet sign-in (`verifyWalletSig`) accepts any signature whose
-  timestamp is within 5 min — a captured `(addr,msg,sig)` could be replayed. Add a **server-issued
-  nonce**: client requests a nonce → signs it → server verifies + burns the nonce (one-time).
+- ✅ **Redeem refund is now double-pay-safe.** `treasurySend` sends ONE tx (one blockhash, one
+  sig) and re-broadcasts the SAME tx until it confirms or its blockhash **expires** — and a Solana
+  tx can never land after `blockHeight > lastValidBlockHeight`, so a refund after expiry is safe.
+  It no longer resends under fresh blockhashes (that created a second sig that could double-pay —
+  the cause of the inflated devnet balances). If it can't confirm AND can't prove the tx dead, it
+  throws `TxUncertainError` and `onRedeem` does **NOT** refund (keeps coins burned for manual
+  reconcile) instead of risking a double-pay.
+- ✅ **Login replay closed with a server nonce.** Client GETs `/nonce` (one-time, 2-min TTL),
+  signs `HASHROCK login\n<addr>\n<nonce>`, joins; the server `consumeNonce()`s it exactly once.
+  A captured signature can't be replayed (nonce already burned). (In-memory store — move to Redis
+  if you run multiple server instances.)
 - 🟠 **Rate-limit** redeem/purchase/login per wallet + per IP; alert on anomalies.
 - 🟠 **Decimals decision is permanent.** Devnet uses **decimals 0** (1 token = 1 coin). If you want
   fractional $HASHROCK on mainnet, choose decimals at mint time and update the coin↔token mapping
@@ -34,12 +35,19 @@ skip the 🔴 items. The economy is only as safe as its weakest accounting path 
 
 ## C. Token mint (one-time)
 
+- A fresh **mainnet treasury keypair** is already generated:
+  - address **`M3pKAX6fJwNy4DVs5oh55FSegDoDoBJVyVkWF95wb1Q`**
+  - secret at `server/.treasury.mainnet.json` (chmod 600, gitignored). **Back this up offline.**
+  - env template ready at `server/.env.mainnet.example` (`TREASURY_SECRET_PATH=./.treasury.mainnet.json`).
 - 🔴 Fund a **deployer** wallet with real SOL (mint creation + ATA + fees ≈ a few cents, but no
-  airdrops on mainnet).
-- Run the setup against mainnet:
+  airdrops on mainnet). Also send the treasury a little SOL for redeem priority fees.
+- Run the setup against mainnet (uses the mainnet treasury secret + deployer):
   ```bash
+  cd server
+  cp .treasury.mainnet.json .treasury.json   # setup-chain.mjs mints to ./.treasury.json
   SOLANA_RPC=<paid-mainnet-rpc> DEPLOYER_KEYPAIR=/path/to/funded.json \
-    node server/scripts/setup-chain.mjs
+    node scripts/setup-chain.mjs
+  # then point the server at the mainnet secret (TREASURY_SECRET_PATH=./.treasury.mainnet.json)
   ```
   This mints the fixed **1B** supply (decimals 0) to the treasury and **burns the mint authority**
   (fixed supply forever). Record `HASHROCK_MINT`, `TREASURY_ADDRESS`.
