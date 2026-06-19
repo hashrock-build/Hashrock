@@ -77,48 +77,42 @@ async function main(): Promise<void> {
   $("marketplace").addEventListener("click", () => toast("🛒 Marketplace — planned"));
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
 
-  // ---- on-chain redeem / deposit ($HASHROCK devnet) ----
-  net.room.onMessage("chainInfo", (m: { treasury: string; mint: string; wallet?: string }) => {
-    $("treasuryaddr").textContent = m.treasury;
-    if (m.wallet) ($("walletinput") as HTMLInputElement).value = m.wallet;
-  });
-  net.room.onMessage("walletSet", () => toast("✅ wallet saved"));
+  // ---- on-chain redeem + balances ($HASHROCK devnet) ----
+  net.room.onMessage("hashrock", (m: { amount: number }) => { $("phashrock").textContent = fmt(m.amount); });
   net.room.onMessage("walletErr", (m: { msg: string }) => toast("⚠ " + m.msg));
+  net.room.onMessage("nameSet", (m: { name: string }) => toast(`✅ username set: ${m.name}`));
   net.room.onMessage("redeemOk", (m: { amount: number; url: string }) => { toast(`✅ redeemed ${fmt(m.amount)} $HASHROCK`); window.open(m.url, "_blank"); });
   net.room.onMessage("redeemErr", (m: { msg: string }) => toast("⚠ redeem: " + m.msg));
-  net.room.onMessage("depositOk", (m: { amount: number }) => toast(`✅ deposited ${fmt(m.amount)} → coins`));
-  net.room.onMessage("depositErr", (m: { msg: string }) => toast("⚠ deposit: " + m.msg));
 
-  $("redeem").addEventListener("click", () => {
-    const v = prompt("Redeem how many coins → $HASHROCK? (min 10, sent to your saved wallet)");
+  $("redeembtn").addEventListener("click", () => {
+    const v = prompt("Redeem how many coins → $HASHROCK? (min 10, sent to your connected wallet)");
     const amt = Math.floor(Number(v));
     if (amt > 0) net!.room.send("redeem", { amount: amt });
   });
-  $("savewallet").addEventListener("click", () => {
-    const a = ($("walletinput") as HTMLInputElement).value.trim();
-    if (a) net!.room.send("setWallet", { address: a });
-  });
-  $("depositbtn").addEventListener("click", () => {
-    const sig = prompt("Paste your $HASHROCK→treasury devnet tx signature:");
-    if (sig?.trim()) net!.room.send("deposit", { sig: sig.trim() });
+  $("savename").addEventListener("click", () => {
+    const name = ($("usernameinput") as HTMLInputElement).value.trim();
+    if (name) net!.room.send("setName", { name });
   });
 
-  // ---- wallet / profile (Phantom) ----
+  // ---- wallet / profile (Solana wallet: Phantom / Backpack / Solflare) ----
   const walletBtn = $("wallet"), profile = $("profile");
+  const myName = (): string => (net!.room.state as { players?: { get(k: string): { name?: string } | undefined } }).players?.get(net!.room.sessionId)?.name ?? "";
   const openProfile = (addr?: string) => {
     walletBtn.classList.add("hidden");
     profile.classList.remove("hidden");
+    ($("usernameinput") as HTMLInputElement).value = myName();
     if (addr) {
-      ($("walletinput") as HTMLInputElement).value = addr;
+      $("pwallet").textContent = addr;
       net!.room.send("setWallet", { address: addr }); // auto-save the connected wallet
+      net!.room.send("getHashrock");
     }
     render();
   };
   walletBtn.addEventListener("click", async () => {
-    if (!getPhantom()) { toast("Phantom not found — paste your address manually"); openProfile(); return; }
+    if (!getPhantom()) { toast("No Solana wallet found — install Phantom/Backpack"); return; }
     const addr = await connectPhantom(false);
-    if (addr) { openProfile(addr); toast("✅ Phantom connected"); }
-    else toast("Phantom connection cancelled");
+    if (addr) { openProfile(addr); toast("✅ wallet connected"); }
+    else toast("wallet connection cancelled");
   });
   $("disconnect").addEventListener("click", async () => {
     await disconnectPhantom();

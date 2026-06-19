@@ -9,14 +9,15 @@ interface PhantomProvider {
   on?(event: string, cb: (...a: unknown[]) => void): void;
 }
 
+// Accepts any injected Solana wallet (Phantom / Backpack / Solflare, …) — they all expose
+// a `connect()` that returns a publicKey.
 export function getPhantom(): PhantomProvider | undefined {
-  const w = window as unknown as { phantom?: { solana?: PhantomProvider }; solana?: PhantomProvider };
-  if (w.phantom?.solana?.isPhantom) return w.phantom.solana;
-  if (w.solana?.isPhantom) return w.solana;
-  return undefined;
+  const w = window as unknown as { phantom?: { solana?: PhantomProvider }; backpack?: PhantomProvider; solana?: PhantomProvider };
+  const p = w.phantom?.solana ?? w.backpack ?? w.solana;
+  return p && typeof p.connect === "function" ? p : undefined;
 }
 
-/** Connect Phantom and return the address; null if absent or the user declined. */
+/** Connect the wallet and return the address; null if absent or the user declined. */
 export async function connectPhantom(onlyIfTrusted = false): Promise<string | null> {
   const p = getPhantom();
   if (!p) return null;

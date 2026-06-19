@@ -3,7 +3,7 @@
 // INTO the treasury from its tx signature. The server holds the treasury secret (MVP; a
 // multisig/program replaces this at mainnet per invariant #5).
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, transfer } from "@solana/spl-token";
+import { getOrCreateAssociatedTokenAccount, transfer, getAssociatedTokenAddress, getAccount } from "@solana/spl-token";
 import fs from "fs";
 
 const RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
@@ -24,6 +24,14 @@ export const treasuryAddress = (): string => treasury.publicKey.toBase58();
 export const mintAddress = (): string => mint.toBase58();
 export const explorer = (sig: string): string => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
 export function isValidAddress(s: string): boolean { try { new PublicKey(s); return true; } catch { return false; } }
+
+/** On-chain $HASHROCK balance of an address (0 if no token account yet). */
+export async function tokenBalance(address: string): Promise<number> {
+  try {
+    const ata = await getAssociatedTokenAddress(mint, new PublicKey(address));
+    return Number((await getAccount(conn, ata)).amount);
+  } catch { return 0; }
+}
 
 /** Send `amount` $HASHROCK from the treasury to `dest`. Returns the tx signature. */
 export async function redeemTo(dest: string, amount: number): Promise<string> {

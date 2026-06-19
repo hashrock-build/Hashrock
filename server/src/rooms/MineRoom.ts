@@ -61,6 +61,8 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("stopMine", (client) => { const p = this.state.players.get(client.sessionId); if (p) p.miningOreId = 0; });
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
     this.onMessage("setWallet", (client, m: { address: string }) => this.onSetWallet(client, m));
+    this.onMessage("setName", (client, m: { name: string }) => this.onSetName(client, m));
+    this.onMessage("getHashrock", (client) => this.sendHashrock(client));
     this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
 
@@ -124,6 +126,22 @@ export class MineRoom extends Room<MineState> {
     this.wallet.set(client.sessionId, addr);
     await db.setWallet(this.pid.get(client.sessionId)!, addr);
     client.send("walletSet", { address: addr });
+    this.sendHashrock(client);
+  }
+
+  private async onSetName(client: Client, m: { name: string }): Promise<void> {
+    const name = (m?.name ?? "").trim().slice(0, 16);
+    if (!name) return;
+    const p = this.state.players.get(client.sessionId);
+    if (p) p.name = name;
+    await db.setName(this.pid.get(client.sessionId)!, name);
+    client.send("nameSet", { name });
+  }
+
+  private async sendHashrock(client: Client): Promise<void> {
+    const addr = this.wallet.get(client.sessionId);
+    const amount = addr ? await chain.tokenBalance(addr) : 0;
+    client.send("hashrock", { amount });
   }
 
   // REDEEM: burn coins (authoritative) then release $HASHROCK from treasury; refund on failure.
@@ -141,6 +159,8 @@ export class MineRoom extends Room<MineState> {
     try {
       const sig = await chain.redeemTo(dest, amount);
       client.send("redeemOk", { amount, sig, url: chain.explorer(sig) });
+      this.sendHashrock(client); // refresh on-chain balance
+
     } catch (e) {
       p.coins += amount; this.state.treasury += amount;
       await db.refundRedeem(playerId, amount);
