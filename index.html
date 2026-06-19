@@ -25,8 +25,11 @@
     button.ghost { background: linear-gradient(180deg, #4a4668, #322e4c); color: #ece9ff; }
     button.mini { padding: 5px 9px; font-size: 11px; }
 
-    /* top-left column: wallet / profile + stats + log */
+    /* top-left column: stats + log */
     #left { position: fixed; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 8px; width: 230px; }
+    /* top-right column: wallet / profile */
+    #right { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; width: 220px; align-items: flex-end; }
+    #right .panel, #right button { width: 100%; }
     #wallet { background: linear-gradient(180deg, #a98bff, #6f4fd0); color: #fff; }
     #profile.hidden, #wallet.hidden { display: none; }
     #profile .phead { font-weight: 700; margin-bottom: 4px; }
@@ -60,13 +63,6 @@
   <div id="game"></div>
 
   <div id="left">
-    <button id="wallet">🔗 Connect Wallet</button>
-    <div id="profile" class="panel hidden">
-      <div class="phead">👤 Profile</div>
-      <div class="prow">addr <b id="paddr">—</b></div>
-      <div class="prow">coins <b id="pcoins">0</b></div>
-      <button id="disconnect" class="ghost mini">Disconnect</button>
-    </div>
     <div id="stats" class="panel">
       <div class="prow">🏦 Treasury <b id="treasury">0</b></div>
       <button id="addspawn" class="ghost mini">+ Spawn ore (dev)</button>
@@ -75,16 +71,26 @@
     </div>
   </div>
 
+  <div id="right">
+    <button id="wallet">🔗 Connect Wallet</button>
+    <div id="profile" class="panel hidden">
+      <div class="phead">👤 Profile</div>
+      <div class="prow">addr <b id="paddr">—</b></div>
+      <div class="prow">coins <b id="pcoins">0</b></div>
+      <button id="disconnect" class="ghost mini">Disconnect</button>
+    </div>
+  </div>
+
   <div id="center" class="panel"><span class="clabel">⛏ coins mined</span> <b id="coins">0</b></div>
 
   <div id="actions">
-    <button id="upgrade">⚒ Upgrade</button>
+    <button id="upgrade" class="ghost">⚒ Upgrade</button>
     <button id="marketplace" class="ghost">🛒 Marketplace</button>
     <button id="redeem" class="ghost">💱 Redeem</button>
     <button id="otc" class="ghost">🤝 OTC Market</button>
   </div>
 
-  <div id="tip"><kbd>WASD</kbd> move · press <kbd>Space</kbd> to mine (stops if you move)</div>
+  <div id="tip"><kbd>WASD</kbd> move · press <kbd>Space</kbd> to mine</div>
   <div id="toast"></div>
 
   <script type="module" src="/src/main.ts"></script>

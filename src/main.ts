@@ -45,8 +45,6 @@ async function main(): Promise<void> {
     $("treasury").textContent = fmt(world.treasury);
     $("count").textContent = `${world.oreCount}/${world.cap}`;
     $("pcoins").textContent = fmt(world.coins);
-    upgradeBtn.textContent = `⚒ Upgrade −${fmt(UPGRADE_COST)}`;
-    upgradeBtn.disabled = world.coins < UPGRADE_COST;
   };
   world.onChange = render;
   render();
@@ -66,7 +64,12 @@ async function main(): Promise<void> {
   });
 
   // ---- actions ----
-  upgradeBtn.addEventListener("click", () => world.upgrade());
+  // Upgrade will branch into axe / character / speed later; for now it runs the demo sink.
+  upgradeBtn.addEventListener("click", () => {
+    if (world.coins < UPGRADE_COST) { toast(`Need ${fmt(UPGRADE_COST)} coins to upgrade`); return; }
+    world.upgrade();
+    toast("⚒ Upgraded (demo sink → 95% pool / 5% creator)");
+  });
   $("addspawn").addEventListener("click", () => net!.room.send("devSpawn"));
   $("marketplace").addEventListener("click", () => toast("🛒 Marketplace — coming in M3b/M4"));
   $("redeem").addEventListener("click", () => toast("💱 Redeem — coming in M3b (on-chain $HASHROCK)"));
