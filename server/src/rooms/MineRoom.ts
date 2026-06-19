@@ -208,9 +208,12 @@ export class MineRoom extends Room<MineState> {
   // --- spawn (blockhash -> free cell) + FIFO ---
   private spawnOre(): void {
     if (!this.freeCells.length) return;
-    // TODO(3b): use a confirmed Solana blockhash from the relayer instead of random
-    const blockhash = Array.from({ length: 8 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-    const cell = this.freeCells[parseInt(blockhash.slice(-4), 16) % this.freeCells.length];
+    // ore position is derived from the latest Solana blockhash (relayer). Fall back to a
+    // local pseudo-hash only until the relayer has fetched one (startup / RPC hiccup).
+    const realbh = chain.currentBlockhash();
+    const blockhash = realbh || `local${Math.floor(Math.random() * 1e9).toString(16)}`;
+    const value = realbh ? chain.blockhashValue(realbh) : Math.floor(Math.random() * 65536);
+    const cell = this.freeCells[value % this.freeCells.length];
     const ore = new OreState();
     ore.id = this.nextOreId++;
     ore.gx = cell % MAP_W; ore.gy = Math.floor(cell / MAP_W);

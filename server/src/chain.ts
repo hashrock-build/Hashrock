@@ -4,6 +4,7 @@
 // multisig/program replaces this at mainnet per invariant #5).
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { getOrCreateAssociatedTokenAccount, transfer, getAssociatedTokenAddress, getAccount } from "@solana/spl-token";
+import bs58 from "bs58";
 import fs from "fs";
 
 const RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
@@ -18,6 +19,24 @@ let treasuryAta: PublicKey;
 export async function initChain(): Promise<void> {
   const ata = await getOrCreateAssociatedTokenAccount(conn, treasury, mint, treasury.publicKey);
   treasuryAta = ata.address;
+}
+
+// --- blockhash relayer: continuously cache the latest Solana blockhash; ore spawns
+// derive their position from it (the on-chain source of randomness). ---
+let latestBlockhash = "";
+export const currentBlockhash = (): string => latestBlockhash;
+export function startBlockhashRelayer(intervalMs = 2000): void {
+  const poll = async () => {
+    try { latestBlockhash = (await conn.getLatestBlockhash()).blockhash; }
+    catch (e) { console.error("[relayer]", (e as Error).message); }
+  };
+  poll();
+  setInterval(poll, intervalMs);
+}
+/** Deterministic 0..65535 from a base58 blockhash (last 2 bytes) — MVP "last 4 hex" rule. */
+export function blockhashValue(bh: string): number {
+  try { const b = bs58.decode(bh); return ((b[b.length - 2] << 8) | b[b.length - 1]) >>> 0; }
+  catch { return 0; }
 }
 
 export const treasuryAddress = (): string => treasury.publicKey.toBase58();

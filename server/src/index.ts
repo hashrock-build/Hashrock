@@ -17,6 +17,9 @@ console.log(`DB ready · pool ${eco.pool.toLocaleString()} · treasury ${eco.tre
 await chain.initChain();
 console.log(`Chain ready · $HASHROCK ${chain.mintAddress()} · treasury ${chain.treasuryAddress()}`);
 
+chain.startBlockhashRelayer(); // ore spawns derive position from the latest Solana blockhash
+console.log(`Blockhash relayer started (devnet)`);
+
 const httpServer = createServer((req, res) => {
   if (req.url === "/health") { res.writeHead(200, { "content-type": "text/plain" }); res.end("ok"); return; }
   res.writeHead(404); res.end();
