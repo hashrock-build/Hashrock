@@ -11,16 +11,16 @@ export class CharacterPreview {
   private axe?: Sprite;
   ready: Promise<void>;
 
-  constructor(chars: PlayerAnims[], size = 120) {
+  constructor(chars: PlayerAnims[], size = 170) {
     this.app = new Application();
     this.ready = this.app.init({ width: size, height: size, backgroundAlpha: 0, antialias: false }).then(() => {
-      this.player = new Player(chars, 2.4, 0);
-      this.player.sprite.x = size * 0.46;
-      this.player.sprite.y = size * 0.92;
+      this.player = new Player(chars, 3.2, 0);
+      this.player.sprite.x = size * 0.44;
+      this.player.sprite.y = size * 0.94;
       this.player.update("down", false, false); // idle, facing camera
       this.axe = new Sprite();
       this.axe.anchor.set(0.5, 1);
-      this.axe.x = size * 0.74; this.axe.y = size * 0.66; this.axe.scale.set(1.5); this.axe.angle = 22;
+      this.axe.x = size * 0.74; this.axe.y = size * 0.7; this.axe.scale.set(2.0); this.axe.angle = 18;
       this.app.stage.addChild(this.player.sprite, this.axe);
     });
   }
