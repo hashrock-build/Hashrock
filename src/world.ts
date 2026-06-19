@@ -2,7 +2,7 @@
 // and sends intents (move / mine / upgrade). The server owns all economy + ore logic;
 // this file is a renderer + input layer. The map (ground/props/collision) is generated
 // locally from shared/mapgen.ts — identical to the server's, so ore lands on valid cells.
-import { Application, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Text, Texture, Assets } from "pixi.js";
 import type { Room } from "colyseus.js";
 import { TILE, cellCenter, facingFrom, Facing } from "./topdown";
 import { clusterForHp, CRYSTAL_W, GroundTiles } from "./tiles";
@@ -54,6 +54,9 @@ export class World {
   private miningBarG!: Graphics;
   private miningBarTxt!: Text;
   private nameLabel!: Text; // local player's username, floating above the head
+  private pickaxe!: Sprite; // equipped pickaxe, shown swinging while mining
+  private pickTexId = -1;
+  private pickSwing = 0;
   private lastMoveSent = 0;
   private lastSentX = -1; private lastSentY = -1;
 
@@ -93,6 +96,12 @@ export class World {
     this.nameLabel = new Text({ text: "", style: { fontFamily: "system-ui, sans-serif", fontSize: 11, fontWeight: "700", fill: "#ffffff", stroke: { color: "#1a1330", width: 3 } } });
     this.nameLabel.anchor.set(0.5, 1);
     this.entities.addChild(this.nameLabel);
+
+    this.pickaxe = new Sprite();
+    this.pickaxe.anchor.set(0.4, 0.85); // grip near the handle end
+    this.pickaxe.visible = false;
+    this.pickaxe.roundPixels = true;
+    this.entities.addChild(this.pickaxe);
 
     this.buildProps();
 
@@ -158,6 +167,8 @@ export class World {
         $(p).listen("skin", (v: number) => this.applySkin(v));
         this.playerCtl?.setBody(p.body);
         $(p).listen("body", (v: number) => { this.playerCtl?.setBody(v); this.applySkin(this.skin); this.onChange?.(); });
+        this.loadPickaxe(p.axe);
+        $(p).listen("axe", (v: number) => this.loadPickaxe(v));
       } else {
         this.addOther(sid, p);
         $(p).onChange(() => this.updateOther(sid, p));
@@ -213,6 +224,11 @@ export class World {
     if (!o) return;
     o.c.x = p.x; o.c.y = p.y; o.c.zIndex = p.y;
     if (p.skin !== o.skin) { o.body.tint = SKINS[p.skin]?.color ?? 0xffffff; o.skin = p.skin; }
+  }
+  private loadPickaxe(id: number): void {
+    if (id === this.pickTexId) return;
+    this.pickTexId = id;
+    Assets.load(`/assets/axes/axe_${id}.png`).then((t: Texture) => { if (this.pickaxe) this.pickaxe.texture = t; });
   }
   private applySkin(skinId: number): void {
     const tint = SKINS[skinId]?.color ?? 0xffffff;
@@ -290,7 +306,13 @@ export class World {
   private requestMine(): void {
     if (this.miningOreId != null) return;
     const ore = this.nearestOre();
-    if (ore) { this.miningOreId = ore.id; this.room.send("mine", { oreId: ore.id }); }
+    if (ore) {
+      this.miningOreId = ore.id;
+      // sync our exact position FIRST so the server's range check uses where we actually
+      // are (move clears mining server-side, so it must precede the mine intent)
+      this.room.send("move", { x: this.px, y: this.py });
+      this.room.send("mine", { oreId: ore.id });
+    }
   }
   private nearestOre(): NetOre | undefined {
     let best: NetOre | undefined, bestD = Infinity;
@@ -359,11 +381,26 @@ export class World {
     if (this.nameLabel.text !== nm) this.nameLabel.text = nm;
     this.nameLabel.x = this.px; this.nameLabel.y = this.py - TILE * 2.1; this.nameLabel.zIndex = this.py + 0.5;
 
+    // pickaxe in-hand, chopping, while mining
+    if (mineActive && this.pickTexId >= 0) {
+      const dir = this.facing === "left" ? -1 : 1;
+      this.pickSwing += this.app.ticker.deltaMS * 0.013;
+      const chop = Math.abs(Math.sin(this.pickSwing)); // 0 (raised) → 1 (struck)
+      this.pickaxe.visible = true;
+      this.pickaxe.x = this.px + dir * TILE * 0.5;
+      this.pickaxe.y = this.py - TILE * 0.42;
+      this.pickaxe.zIndex = this.py + 1;
+      this.pickaxe.scale.set(1.7); this.pickaxe.scale.x = 1.7 * dir;
+      this.pickaxe.angle = dir * (-28 + chop * 66);
+    } else {
+      this.pickaxe.visible = false;
+    }
+
 
     // throttled position send — ONLY while moving (a "move" msg cancels mining server-side,
     // so we must not send it while standing & mining). Resting pos is ~1 frame off, well
     // within MINE_RANGE, so the server validates mining fine from the last moving update.
-    const now = this.app.ticker.lastTime;
+    const now = performance.now();
     if (moving && now - this.lastMoveSent > MOVE_SEND_MS && (this.px !== this.lastSentX || this.py !== this.lastSentY)) {
       this.room.send("move", { x: this.px, y: this.py });
       this.lastSentX = this.px; this.lastSentY = this.py; this.lastMoveSent = now;
