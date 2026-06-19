@@ -5,14 +5,15 @@
 // Economy is authoritative IN-MEMORY for responsiveness and mirrored to Postgres (db.ts)
 // for durability + audit (ledger). On boot the pool/treasury/creator load from the DB.
 //
-// ⚠️ Map free-cells are a PLACEHOLDER central region until the shared deterministic
-// map-gen is extracted (so server & client agree on ore positions). Marked TODO(map).
+// Ore positions use the shared deterministic map-gen (shared/mapgen.ts) — the same module
+// the client renders from — so server & client agree on every free cell.
 import { Room, Client } from "colyseus";
 import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
+import * as gen from "../../../shared/mapgen";
 
-const TILE = 32;
-const MAP_W = 112, MAP_H = 112;
+const TILE = gen.TILE;
+const MAP_W = gen.MAP_W, MAP_H = gen.MAP_H;
 const ORE_HP = Number(process.env.ORE_HP ?? 100);
 const ORE_CAP = Number(process.env.ORE_CAP ?? 150);
 const POOL_SEED = Number(process.env.POOL_SEED ?? 100_000_000);
@@ -37,7 +38,7 @@ export class MineRoom extends Room<MineState> {
   autoDispose = false; // single persistent world: ore keeps living across player connects
   private nextOreId = 1;
   private oreOrder: number[] = [];           // FIFO insertion order
-  private freeCells: number[] = [];          // TODO(map): real deterministic free-cell list
+  private freeCells: number[] = [];          // ore-spawnable cells (shared deterministic map-gen)
   private pid = new Map<string, string>();   // sessionId -> persistent playerId
   private dmg = new Map<number, Map<string, number>>(); // oreId -> (sessionId -> damage)
 
@@ -50,7 +51,7 @@ export class MineRoom extends Room<MineState> {
     this.state.treasury = eco.treasury;
     this.state.cap = ORE_CAP;
 
-    for (let gy = 36; gy < 76; gy++) for (let gx = 36; gx < 76; gx++) this.freeCells.push(gy * MAP_W + gx);
+    this.freeCells = gen.buildVillage().freeCells; // server & client share this exact map
 
     this.onMessage("move", (client, m: { x: number; y: number }) => this.onMove(client, m));
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));
