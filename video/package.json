@@ -1,0 +1,22 @@
+{
+  "name": "hashrock-video",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Remotion intro/promo video for HASHROCK.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render Intro out/intro.mp4 --concurrency=2"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.481",
+    "@remotion/google-fonts": "^4.0.481",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.481"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "typescript": "^5.9.3"
+  }
+}

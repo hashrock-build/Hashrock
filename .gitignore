@@ -10,3 +10,6 @@ dist
 # Source archives (already extracted into the repo)
 *.zip
 bundle/
+
+# large local media (recordings / renders)
+*.mp4
