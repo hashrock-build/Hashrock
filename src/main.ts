@@ -49,8 +49,8 @@ async function main(): Promise<void> {
   world.onChange = render;
   render();
 
-  // ---- live event log (comment-style feed: newest at bottom, oldest scrolls off) ----
-  const logEl = $("log");
+  // ---- live event feed (comment-style: newest at bottom, oldest rises off the top) ----
+  const logEl = $("feed");
   let mined = 0, unmined = 0;
   net.room.onMessage("ev", (m: { k: string; id?: number; hash?: string; gx?: number; gy?: number }) => {
     let cls = "e", text = "";
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     const div = document.createElement("div");
     div.className = `e ${cls}`; div.textContent = text;
     logEl.appendChild(div);
-    while (logEl.childElementCount > 8) logEl.removeChild(logEl.firstChild!);
+    while (logEl.childElementCount > 6) logEl.removeChild(logEl.firstChild!);
   });
 
   // ---- actions ----

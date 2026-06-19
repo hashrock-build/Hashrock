@@ -35,11 +35,14 @@
     #profile .phead { font-weight: 700; margin-bottom: 4px; }
     .prow { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
     .dim { color: #9a92c0; } .dim b { color: #cda6f0; }
-    #stats #addspawn { margin: 6px 0; width: 100%; }
-    #log { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; font-size: 11px;
-           font-family: ui-monospace, monospace; max-height: 150px; overflow: hidden; }
-    #log .e { color: #cfc8e8; opacity: .95; }
-    #log .spawn { color: #8fe4f5; } #log .mine { color: #8ef5a8; } #log .evict { color: #f59a8f; }
+    /* live event feed (comment-style, newest at bottom, rises upward) */
+    #feed { position: fixed; left: 14px; bottom: 54px; width: 300px; display: flex; flex-direction: column;
+            justify-content: flex-end; gap: 3px; pointer-events: none; font-family: ui-monospace, monospace; font-size: 12px; }
+    #feed .e { width: fit-content; max-width: 100%; padding: 4px 9px; border-radius: 8px;
+               background: rgba(20,18,30,.72); border: 1px solid #34304e; color: #cfc8e8;
+               animation: feedin .25s ease; }
+    #feed .spawn { color: #8fe4f5; } #feed .mine { color: #8ef5a8; } #feed .evict { color: #f59a8f; }
+    @keyframes feedin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
     /* top-center: coins mined */
     #center { position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
@@ -66,7 +69,6 @@
     <div id="stats" class="panel">
       <div class="prow">🏦 Treasury <b id="treasury">0</b></div>
       <div class="prow dim">active <b id="count">0/150</b> · mined <b id="cmined">0</b> · unmined <b id="cunmined">0</b></div>
-      <div id="log"></div>
     </div>
   </div>
 
@@ -88,6 +90,8 @@
     <button id="redeem" class="ghost">💱 Redeem</button>
     <button id="otc" class="ghost">🤝 OTC Market</button>
   </div>
+
+  <div id="feed"></div>
 
   <div id="tip"><kbd>WASD</kbd> move · press <kbd>Space</kbd> to mine</div>
   <div id="toast"></div>
