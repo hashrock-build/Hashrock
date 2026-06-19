@@ -1,6 +1,6 @@
 import { Application } from "pixi.js";
 import { World } from "./world";
-import { connect, getPlayerId } from "./net";
+import { connect } from "./net";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadPlayerAnims } from "./player";
 import { loadProps } from "./props";
@@ -73,19 +73,41 @@ async function main(): Promise<void> {
     world.upgrade();
     toast("⚒ Upgraded (demo sink → 95% pool / 5% creator)");
   });
-  $("marketplace").addEventListener("click", () => toast("🛒 Marketplace — coming in M3b/M4"));
-  $("redeem").addEventListener("click", () => toast("💱 Redeem — coming in M3b (on-chain $HASHROCK)"));
+  $("marketplace").addEventListener("click", () => toast("🛒 Marketplace — planned"));
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
 
-  // ---- wallet / profile (stub until Phantom in M4) ----
+  // ---- on-chain redeem / deposit ($HASHROCK devnet) ----
+  net.room.onMessage("chainInfo", (m: { treasury: string; mint: string; wallet?: string }) => {
+    $("treasuryaddr").textContent = m.treasury;
+    if (m.wallet) ($("walletinput") as HTMLInputElement).value = m.wallet;
+  });
+  net.room.onMessage("walletSet", () => toast("✅ wallet saved"));
+  net.room.onMessage("walletErr", (m: { msg: string }) => toast("⚠ " + m.msg));
+  net.room.onMessage("redeemOk", (m: { amount: number; url: string }) => { toast(`✅ redeemed ${fmt(m.amount)} $HASHROCK`); window.open(m.url, "_blank"); });
+  net.room.onMessage("redeemErr", (m: { msg: string }) => toast("⚠ redeem: " + m.msg));
+  net.room.onMessage("depositOk", (m: { amount: number }) => toast(`✅ deposited ${fmt(m.amount)} → coins`));
+  net.room.onMessage("depositErr", (m: { msg: string }) => toast("⚠ deposit: " + m.msg));
+
+  $("redeem").addEventListener("click", () => {
+    const v = prompt("Redeem how many coins → $HASHROCK? (min 10, sent to your saved wallet)");
+    const amt = Math.floor(Number(v));
+    if (amt > 0) net!.room.send("redeem", { amount: amt });
+  });
+  $("savewallet").addEventListener("click", () => {
+    const a = ($("walletinput") as HTMLInputElement).value.trim();
+    if (a) net!.room.send("setWallet", { address: a });
+  });
+  $("depositbtn").addEventListener("click", () => {
+    const sig = prompt("Paste your $HASHROCK→treasury devnet tx signature:");
+    if (sig?.trim()) net!.room.send("deposit", { sig: sig.trim() });
+  });
+
+  // ---- wallet / profile (full Phantom signing lands in M4) ----
   const walletBtn = $("wallet"), profile = $("profile");
   walletBtn.addEventListener("click", () => {
-    const id = getPlayerId();
-    $("paddr").textContent = `${id.slice(0, 4)}…${id.slice(-4)}`;
     walletBtn.classList.add("hidden");
     profile.classList.remove("hidden");
     render();
-    toast("Connected (local id — Phantom wallet lands in M4)");
   });
   $("disconnect").addEventListener("click", () => {
     profile.classList.add("hidden");

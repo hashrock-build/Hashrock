@@ -30,6 +30,10 @@
     /* top-right column: wallet / profile */
     #right { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; width: 220px; align-items: flex-end; }
     #right .panel, #right button { width: 100%; }
+    #profile input { width: 100%; padding: 5px 8px; border-radius: 7px; border: 1px solid #34304e;
+                     background: #1a1730; color: #ece9ff; font-size: 11px; margin: 3px 0; font-family: ui-monospace, monospace; }
+    #profile .mono { font-family: ui-monospace, monospace; font-size: 10px; color: #9a92c0; word-break: break-all; margin: 2px 0; }
+    #profile button { margin-top: 4px; }
     #wallet { background: linear-gradient(180deg, #a98bff, #6f4fd0); color: #fff; }
     #profile.hidden, #wallet.hidden { display: none; }
     #profile .phead { font-weight: 700; margin-bottom: 4px; }
@@ -76,8 +80,13 @@
     <button id="wallet">🔗 Connect Wallet</button>
     <div id="profile" class="panel hidden">
       <div class="phead">👤 Profile</div>
-      <div class="prow">addr <b id="paddr">—</b></div>
       <div class="prow">coins <b id="pcoins">0</b></div>
+      <div class="prow dim">your devnet wallet</div>
+      <input id="walletinput" placeholder="paste Solana address" spellcheck="false" />
+      <button id="savewallet" class="ghost mini">Save wallet</button>
+      <div class="prow dim" style="margin-top:7px">deposit $HASHROCK to treasury:</div>
+      <div id="treasuryaddr" class="mono">—</div>
+      <button id="depositbtn" class="ghost mini">I deposited → paste tx sig</button>
       <button id="disconnect" class="ghost mini">Disconnect</button>
     </div>
   </div>

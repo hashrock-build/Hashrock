@@ -34,10 +34,51 @@ export async function initSchema(seedPool: number): Promise<void> {
       meta          JSONB
     );
   `);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS wallet TEXT`); // Solana address for redeem
   // seed economy: pool = seed, treasury backs it 1:1 (= seed), creator = 0
   await pool.query(
     `INSERT INTO economy (id, pool, creator, treasury) VALUES (1, $1, 0, $1)
      ON CONFLICT (id) DO NOTHING`, [seedPool]);
+}
+
+export async function setWallet(playerId: string, wallet: string): Promise<void> {
+  await pool.query(`UPDATE players SET wallet = $2 WHERE id = $1`, [playerId, wallet]);
+}
+export async function getWallet(playerId: string): Promise<string | null> {
+  const { rows } = await pool.query(`SELECT wallet FROM players WHERE id = $1`, [playerId]);
+  return rows[0]?.wallet ?? null;
+}
+
+/** REDEEM: burn coins + reduce treasury backing (on-chain release happens separately). */
+export async function persistRedeem(playerId: string, amount: number): Promise<void> {
+  await tx(async (c) => {
+    await c.query(`UPDATE players SET coins = coins - $1 WHERE id = $2`, [amount, playerId]);
+    await c.query(`UPDATE economy SET treasury = treasury - $1 WHERE id = 1`, [amount]);
+    await c.query(`INSERT INTO ledger (kind, player_id, amount, treasury_delta) VALUES ('redeem', $1, $2, $3)`,
+      [playerId, -amount, -amount]);
+  });
+}
+/** Reverse a redeem if the on-chain release failed. */
+export async function refundRedeem(playerId: string, amount: number): Promise<void> {
+  await tx(async (c) => {
+    await c.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [amount, playerId]);
+    await c.query(`UPDATE economy SET treasury = treasury + $1 WHERE id = 1`, [amount]);
+    await c.query(`INSERT INTO ledger (kind, player_id, amount, treasury_delta) VALUES ('redeem_refund', $1, $2, $3)`,
+      [playerId, amount, amount]);
+  });
+}
+
+/** DEPOSIT: $HASHROCK confirmed into treasury → mint coins 1:1. Dedupes by tx signature. */
+export async function persistDeposit(playerId: string, amount: number, sig: string): Promise<boolean> {
+  const dup = await pool.query(`SELECT 1 FROM ledger WHERE kind = 'deposit' AND meta->>'sig' = $1 LIMIT 1`, [sig]);
+  if (dup.rowCount) return false; // already credited
+  await tx(async (c) => {
+    await c.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [amount, playerId]);
+    await c.query(`UPDATE economy SET treasury = treasury + $1 WHERE id = 1`, [amount]);
+    await c.query(`INSERT INTO ledger (kind, player_id, amount, treasury_delta, meta) VALUES ('deposit', $1, $2, $3, $4)`,
+      [playerId, amount, amount, JSON.stringify({ sig })]);
+  });
+  return true;
 }
 
 export async function getEconomy(): Promise<Economy> {

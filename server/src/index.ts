@@ -4,6 +4,7 @@ import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { MineRoom } from "./rooms/MineRoom";
 import * as db from "./db";
+import * as chain from "./chain";
 
 const port = Number(process.env.PORT ?? 2567);
 const POOL_SEED = Number(process.env.POOL_SEED ?? 100_000_000);
@@ -12,6 +13,9 @@ const POOL_SEED = Number(process.env.POOL_SEED ?? 100_000_000);
 await db.initSchema(POOL_SEED);
 const eco = await db.getEconomy();
 console.log(`DB ready · pool ${eco.pool.toLocaleString()} · treasury ${eco.treasury.toLocaleString()}`);
+
+await chain.initChain();
+console.log(`Chain ready · $HASHROCK ${chain.mintAddress()} · treasury ${chain.treasuryAddress()}`);
 
 const httpServer = createServer((req, res) => {
   if (req.url === "/health") { res.writeHead(200, { "content-type": "text/plain" }); res.end("ok"); return; }

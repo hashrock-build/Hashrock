@@ -10,6 +10,7 @@
 import { Room, Client } from "colyseus";
 import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
+import * as chain from "../chain";
 import * as gen from "../../../shared/mapgen";
 
 const TILE = gen.TILE;
@@ -24,6 +25,7 @@ const CREATOR_FEE = Number(process.env.CREATOR_FEE ?? 0.05);
 const BASE_MINE_TIME = Number(process.env.BASE_MINE_TIME_SEC ?? 30);
 const SPAWN_INTERVAL = Number(process.env.SPAWN_INTERVAL_SEC ?? 60) * 1000;
 const UPGRADE_COST = 5000; // DEMO sink (coins). Real upgrades = on-chain $HASHROCK (invariant #8).
+const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
 const REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY;
 const MINE_RANGE = TILE * 1.6;
 const TICK_MS = 100;
@@ -40,6 +42,7 @@ export class MineRoom extends Room<MineState> {
   private oreOrder: number[] = [];           // FIFO insertion order
   private freeCells: number[] = [];          // ore-spawnable cells (shared deterministic map-gen)
   private pid = new Map<string, string>();   // sessionId -> persistent playerId
+  private wallet = new Map<string, string>(); // sessionId -> Solana address (for redeem)
   private dmg = new Map<number, Map<string, number>>(); // oreId -> (sessionId -> damage)
 
   async onCreate(): Promise<void> {
@@ -57,6 +60,9 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));
     this.onMessage("stopMine", (client) => { const p = this.state.players.get(client.sessionId); if (p) p.miningOreId = 0; });
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
+    this.onMessage("setWallet", (client, m: { address: string }) => this.onSetWallet(client, m));
+    this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
+    this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
 
     this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
@@ -68,15 +74,19 @@ export class MineRoom extends Room<MineState> {
     const name = (opts.name || "miner").slice(0, 16);
     this.pid.set(client.sessionId, playerId);
     const coins = await db.ensurePlayer(playerId, name);
+    const w = await db.getWallet(playerId);
+    if (w) this.wallet.set(client.sessionId, w);
     const p = new PlayerState();
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
     p.x = c.x; p.y = c.y; p.name = name; p.coins = coins; p.throughput = 1;
     this.state.players.set(client.sessionId, p);
+    client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
   }
 
   onLeave(client: Client): void {
     this.state.players.delete(client.sessionId);
     this.pid.delete(client.sessionId);
+    this.wallet.delete(client.sessionId);
   }
 
   // --- intents (authoritative) ---
@@ -106,6 +116,52 @@ export class MineRoom extends Room<MineState> {
     this.state.creator += cut;
     this.state.pool += UPGRADE_COST - cut;
     persist(db.persistUpgrade(this.pid.get(client.sessionId)!, UPGRADE_COST, cut));
+  }
+
+  private async onSetWallet(client: Client, m: { address: string }): Promise<void> {
+    const addr = (m?.address ?? "").trim();
+    if (!chain.isValidAddress(addr)) { client.send("walletErr", { msg: "invalid Solana address" }); return; }
+    this.wallet.set(client.sessionId, addr);
+    await db.setWallet(this.pid.get(client.sessionId)!, addr);
+    client.send("walletSet", { address: addr });
+  }
+
+  // REDEEM: burn coins (authoritative) then release $HASHROCK from treasury; refund on failure.
+  private async onRedeem(client: Client, m: { amount: number }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const amount = Math.floor(m?.amount ?? 0);
+    if (!p) return;
+    if (!dest) return void client.send("redeemErr", { msg: "set your wallet address first" });
+    if (amount < REDEEM_MIN) return void client.send("redeemErr", { msg: `min redeem is ${REDEEM_MIN}` });
+    if (amount > p.coins) return void client.send("redeemErr", { msg: "not enough coins" });
+    const playerId = this.pid.get(client.sessionId)!;
+    p.coins -= amount; this.state.treasury -= amount;
+    await db.persistRedeem(playerId, amount);
+    try {
+      const sig = await chain.redeemTo(dest, amount);
+      client.send("redeemOk", { amount, sig, url: chain.explorer(sig) });
+    } catch (e) {
+      p.coins += amount; this.state.treasury += amount;
+      await db.refundRedeem(playerId, amount);
+      client.send("redeemErr", { msg: "on-chain transfer failed (refunded)" });
+      console.error("[redeem]", e);
+    }
+  }
+
+  // DEPOSIT: verify a player's $HASHROCK transfer into the treasury → mint coins 1:1.
+  private async onDeposit(client: Client, m: { sig: string }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const sig = (m?.sig ?? "").trim();
+    if (!p || !sig) return void client.send("depositErr", { msg: "missing tx signature" });
+    try {
+      const dep = await chain.verifyDeposit(sig);
+      if (!dep) return void client.send("depositErr", { msg: "no $HASHROCK deposit found in that tx" });
+      const ok = await db.persistDeposit(this.pid.get(client.sessionId)!, dep.amount, sig);
+      if (!ok) return void client.send("depositErr", { msg: "already credited" });
+      p.coins += dep.amount; this.state.treasury += dep.amount;
+      client.send("depositOk", { amount: dep.amount, sig, url: chain.explorer(sig) });
+    } catch (e) { client.send("depositErr", { msg: "verify failed" }); console.error("[deposit]", e); }
   }
 
   // --- spawn (blockhash -> free cell) + FIFO ---
