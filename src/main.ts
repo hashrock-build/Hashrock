@@ -4,6 +4,7 @@ import { connect } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
 import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
+import { CharacterPreview } from "./preview";
 import { SKINS, AXES, RARITY_COLOR, type Cosmetic } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadCharacters } from "./player";
@@ -42,6 +43,11 @@ async function main(): Promise<void> {
   if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
     (window as unknown as { world: World }).world = world;
 
+  // live character preview (shown inside Profile / Marketplace cards)
+  const preview = new CharacterPreview(playerAnims);
+  const updatePreview = () => preview.set(world.body, world.skin, world.axe);
+  const mountPreview = (slotId: string) => preview.ready.then(() => { $(slotId).appendChild(preview.canvas); updatePreview(); });
+
   // ---- HUD render (authoritative state) ----
   const upgradeBtn = $("upgrade") as HTMLButtonElement;
   const render = () => {
@@ -51,7 +57,8 @@ async function main(): Promise<void> {
     $("pcoins").textContent = fmt(world.coins);
     $("dur").textContent = String(world.durability);
     $("pdur").textContent = String(world.durability);
-    if ($("profileModal").classList.contains("show")) buildPickers();
+    if ($("profileModal").classList.contains("show")) { buildPickers(); updatePreview(); }
+    if ($("marketModal").classList.contains("show")) updatePreview();
   };
 
   // ---- live event feed (comment-style: newest at bottom, oldest rises off the top) ----
@@ -95,7 +102,7 @@ async function main(): Promise<void> {
       el.appendChild(row);
     });
   };
-  $("marketplace").addEventListener("click", () => { buildShop(); showModal("marketModal"); });
+  $("marketplace").addEventListener("click", () => { buildShop(); showModal("marketModal"); mountPreview("pvMarket"); });
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
 
   // ---- modal helpers ----
@@ -186,6 +193,7 @@ async function main(): Promise<void> {
     buildPickers();
     render();
     showModal("profileModal");
+    mountPreview("pvProfile");
   };
   walletBtn.addEventListener("click", async () => {
     if (connected) return openProfile();

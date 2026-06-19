@@ -91,6 +91,9 @@
     .card .phead { color: #8fe4f5; font-size: 14px; letter-spacing: .3px; padding-bottom: 6px; margin-bottom: 6px;
                    border-bottom: 1px solid #2b2a45; text-shadow: 0 1px 0 #0c1830; }
     #profile.card, .modal .card { background: linear-gradient(180deg, rgba(26,24,38,.94), rgba(20,18,30,.94)); }
+    .pvslot { width: 120px; height: 120px; margin: 2px auto 6px; display: flex; align-items: center; justify-content: center;
+              background: radial-gradient(circle at 50% 80%, rgba(143,228,245,.10), transparent 70%); border-radius: 12px; }
+    .pvslot canvas { image-rendering: pixelated; }
   </style>
 </head>
 <body>
@@ -126,6 +129,7 @@
     <div id="profile" class="panel card">
       <button class="x" id="profileClose">×</button>
       <div class="phead">👤 Profile</div>
+      <div id="pvProfile" class="pvslot"></div>
       <input id="usernameinput" placeholder="set a username" spellcheck="false" maxlength="16" />
       <button id="savename" class="ghost mini">Save username</button>
 
@@ -153,6 +157,7 @@
     <div class="panel card">
       <button class="x" id="marketClose">×</button>
       <div class="phead">🛒 Marketplace</div>
+      <div id="pvMarket" class="pvslot"></div>
       <div class="prow dim">axes — pay with $HASHROCK (95% pool · 5% creator)</div>
       <div id="shopaxes" class="shop"></div>
     </div>
