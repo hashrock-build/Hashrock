@@ -27,11 +27,11 @@ const REWARD_FLOOR = Number(process.env.REWARD_FLOOR ?? 1);
 const CREATOR_FEE = Number(process.env.CREATOR_FEE ?? 0.05);
 const BASE_MINE_TIME = Number(process.env.BASE_MINE_TIME_SEC ?? 30);
 const SPAWN_INTERVAL = Number(process.env.SPAWN_INTERVAL_SEC ?? 60) * 1000;
-const UPGRADE_COST = 5000; // DEMO sink (coins). Real upgrades = on-chain $HASHROCK (invariant #8).
+const UPGRADE_COST = 500; // DEMO sink (coins). Real upgrades = on-chain $HASHROCK (invariant #8).
 const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
 const DUR_PER_ORE = 2;     // axe durability lost per ore fully mined
 const DUR_PENALTY = 0.35;  // throughput multiplier when durability hits 0
-const REPAIR_COST = 3000;  // $HASHROCK to fully repair (sink → 95% pool / 5% creator)
+const REPAIR_COST = 250;   // $HASHROCK to fully repair (sink → 95% pool / 5% creator)
 const REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY;
 const MINE_RANGE = TILE * 1.6;
 const MOVE_SPEED = 130; // px/s — server validates client moves against this (+ tolerance)
