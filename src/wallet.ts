@@ -7,6 +7,7 @@ interface PhantomProvider {
   connect(opts?: { onlyIfTrusted?: boolean }): Promise<{ publicKey: { toString(): string } }>;
   disconnect(): Promise<void>;
   signAndSendTransaction(tx: unknown): Promise<{ signature: string }>;
+  signMessage?(message: Uint8Array, display?: string): Promise<{ signature: Uint8Array | number[] | string }>;
   on?(event: string, cb: (...a: unknown[]) => void): void;
 }
 
@@ -32,4 +33,20 @@ export async function connectPhantom(onlyIfTrusted = false): Promise<string | nu
 
 export async function disconnectPhantom(): Promise<void> {
   try { await getPhantom()?.disconnect(); } catch { /* ignore */ }
+}
+
+/** Prove wallet ownership: sign a timestamped login message. The server verifies the
+ *  ed25519 signature so the wallet address can safely be the player identity. */
+export async function signLogin(address: string): Promise<{ msg: string; sig: string } | null> {
+  const p = getPhantom();
+  if (!p?.signMessage) return null;
+  const msg = `HASHROCK login\n${address}\n${Date.now()}`;
+  try {
+    const res = await p.signMessage(new TextEncoder().encode(msg), "utf8");
+    const s = res.signature;
+    const bytes = s instanceof Uint8Array ? s : Array.isArray(s) ? Uint8Array.from(s) : null;
+    if (!bytes) return null;
+    const sig = btoa(String.fromCharCode(...bytes)); // base64 — server decodes with Buffer
+    return { msg, sig };
+  } catch { return null; }
 }

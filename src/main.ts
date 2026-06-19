@@ -1,7 +1,7 @@
 import { Application } from "pixi.js";
 import { World } from "./world";
 import { connect, roomStats } from "./net";
-import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
+import { getPhantom, connectPhantom, disconnectPhantom, signLogin } from "./wallet";
 import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
 import { CharacterPreview } from "./preview";
@@ -20,12 +20,10 @@ function toast(msg: string): void {
   toastTimer = window.setTimeout(() => t.classList.remove("show"), 1800);
 }
 
-// Entering REQUIRES a connected wallet (gated on the landing). Identity stays a secret
-// per-browser playerId (UUID) — NOT the public wallet address, which would let anyone join
-// as your id and redeem your coins. The wallet is bound (setWallet) for redeem, and the
-// server only pays mining rewards once a wallet is bound (see MineRoom) — so no earning
-// without a wallet.
-async function enterGame(walletAddr: string): Promise<void> {
+// Identity = the wallet address, PROVEN by an ed25519 signature (see signLogin). The server
+// rejects the join unless the signature verifies, so each account is bound to a wallet only its
+// owner can sign for — switching wallets switches accounts; you can only redeem to your own.
+async function enterGame(walletAddr: string, auth: { msg: string; sig: string }): Promise<void> {
   const app = new Application();
   await app.init({ background: "#3a5a2a", resizeTo: window, antialias: false });
   $("game").appendChild(app.canvas);
@@ -36,7 +34,7 @@ async function enterGame(walletAddr: string): Promise<void> {
 
   let net;
   try {
-    net = await connect("miner"); // identity = secret localStorage UUID (not the public wallet)
+    net = await connect("miner", walletAddr, auth); // identity = the signed-in wallet address
   } catch (e) {
     toast("⚠ server offline — start: npm --prefix server run dev");
     console.error("[net] connect failed", e);
@@ -338,11 +336,14 @@ function initLanding(): void {
     const btns = [$("playBtn"), $("landingWallet")] as HTMLButtonElement[];
     btns.forEach((b) => (b.disabled = true));
     const addr = await connectPhantom(false);
+    if (!addr) { btns.forEach((b) => (b.disabled = false)); return void toast("connect your wallet to play"); }
+    toast("sign the login request in your wallet…");
+    const auth = await signLogin(addr); // prove ownership → wallet becomes the account identity
     btns.forEach((b) => (b.disabled = false));
-    if (!addr) return void toast("connect your wallet to play");
+    if (!auth) return void toast("wallet must support message signing to play");
     started = true;
     document.body.classList.add("playing");
-    enterGame(addr);
+    enterGame(addr, auth);
   };
   $("playBtn").addEventListener("click", enterWithWallet);
   $("landingWallet").addEventListener("click", enterWithWallet);

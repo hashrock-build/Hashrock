@@ -15,9 +15,9 @@ export function getPlayerId(): string {
 
 export interface Net { room: Room; $: ReturnType<typeof getStateCallbacks>; }
 
-export async function connect(name = "miner", playerId = getPlayerId()): Promise<Net> {
+export async function connect(name = "miner", playerId = getPlayerId(), auth?: { msg: string; sig: string }): Promise<Net> {
   const client = new Client(`ws://${location.hostname}:${SERVER_PORT}`);
-  const room = await client.joinOrCreate("mine", { playerId, name });
+  const room = await client.joinOrCreate("mine", { playerId, name, msg: auth?.msg, sig: auth?.sig });
   const $ = getStateCallbacks(room);
   return { room, $ };
 }

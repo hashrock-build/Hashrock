@@ -106,13 +106,24 @@ export class MineRoom extends Room<MineState> {
     try { this.state.treasury = await chain.treasuryBalance(); } catch { /* keep last value */ }
   }
 
-  async onJoin(client: Client, opts: { name?: string; playerId?: string } = {}): Promise<void> {
-    const playerId = (opts.playerId || client.sessionId).slice(0, 64);
+  async onJoin(client: Client, opts: { name?: string; playerId?: string; msg?: string; sig?: string } = {}): Promise<void> {
+    // IDENTITY = the wallet address, proven by an ed25519 signature. playerId MUST be a valid
+    // Solana address whose signed login message verifies — otherwise reject the join. This binds
+    // every account to a wallet only its owner can sign for (no UUID accounts, no impersonation).
+    const addr = (opts.playerId || "").trim();
+    const msg = opts.msg || "", sig = opts.sig || "";
+    if (!chain.isValidAddress(addr)) throw new Error("connect a wallet to play");
+    if (!msg.includes(addr) || !chain.verifyWalletSig(addr, msg, sig)) throw new Error("wallet signature invalid");
+    const ts = Number(msg.trim().split("\n").pop());
+    if (!ts || Math.abs(Date.now() - ts) > 5 * 60 * 1000) throw new Error("login expired — reconnect");
+
+    const playerId = addr;
     const name = (opts.name || "miner").slice(0, 16);
     this.pid.set(client.sessionId, playerId);
     const prof = await db.ensurePlayer(playerId, name);
-    const w = await db.getWallet(playerId);
-    if (w) this.wallet.set(client.sessionId, w);
+    this.wallet.set(client.sessionId, playerId); // authenticated wallet = redeem destination
+    if ((await db.getWallet(playerId)) !== playerId) await db.setWallet(playerId, playerId);
+    const w = playerId;
     const p = new PlayerState();
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
     p.x = c.x; p.y = c.y;
@@ -178,10 +189,9 @@ export class MineRoom extends Room<MineState> {
 
   private async onSetWallet(client: Client, m: { address: string }): Promise<void> {
     const addr = (m?.address ?? "").trim();
-    if (!chain.isValidAddress(addr)) { client.send("walletErr", { msg: "invalid Solana address" }); return; }
-    this.wallet.set(client.sessionId, addr);
-    await db.setWallet(this.pid.get(client.sessionId)!, addr);
-    client.send("walletSet", { address: addr });
+    // Identity = the authenticated wallet (playerId). Reject any attempt to rebind the redeem
+    // destination to a different address — you can only ever redeem to the wallet you signed in with.
+    if (addr !== this.pid.get(client.sessionId)) { client.send("walletErr", { msg: "redeem only to your signed-in wallet" }); return; }
     this.sendHashrock(client);
   }
 

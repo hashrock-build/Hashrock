@@ -6,6 +6,7 @@ import { Connection, Keypair, PublicKey, Transaction, ComputeBudgetProgram, Tran
 import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddress, getAccount, createTransferInstruction } from "@solana/spl-token";
 import bs58 from "bs58";
 import fs from "fs";
+import crypto from "crypto";
 
 const RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
 const conn = new Connection(RPC, "confirmed");
@@ -53,6 +54,20 @@ export const treasuryAddress = (): string => treasury.publicKey.toBase58();
 export const mintAddress = (): string => mint.toBase58();
 export const explorer = (sig: string): string => `https://solscan.io/tx/${sig}?cluster=devnet`;
 export function isValidAddress(s: string): boolean { try { new PublicKey(s); return true; } catch { return false; } }
+
+/** Verify a wallet signed `message`, proving ownership of `address` (a Solana ed25519 pubkey).
+ *  `sigB64` is the base64 signature from the client. Uses Node crypto (ed25519) — wraps the raw
+ *  32-byte pubkey in DER/SPKI, no extra deps. */
+export function verifyWalletSig(address: string, message: string, sigB64: string): boolean {
+  try {
+    const pub = bs58.decode(address);
+    const sig = Buffer.from(sigB64, "base64");
+    if (pub.length !== 32 || sig.length !== 64) return false;
+    const der = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(pub)]);
+    const key = crypto.createPublicKey({ key: der, format: "der", type: "spki" });
+    return crypto.verify(null, Buffer.from(message, "utf8"), key, Buffer.from(sig));
+  } catch { return false; }
+}
 
 /** On-chain $HASHROCK balance held by the treasury (the real reserve, shown in the HUD). */
 export async function treasuryBalance(): Promise<number> {
