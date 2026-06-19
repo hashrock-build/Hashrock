@@ -72,7 +72,7 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
     this.onMessage("setWallet", (client, m: { address: string }) => this.onSetWallet(client, m));
     this.onMessage("setName", (client, m: { name: string }) => this.onSetName(client, m));
-    this.onMessage("setBody", (client, m: { body: number }) => this.equip(client, "body", m?.body, 2));
+    this.onMessage("setBody", (client, m: { body: number }) => this.equip(client, "body", m?.body, 1));
     this.onMessage("setSkin", (client, m: { skin: number }) => this.equip(client, "skin", m?.skin, SKINS.length));
     this.onMessage("setHair", (client, m: { hair: number }) => this.equip(client, "hair", m?.hair, HAIRS.length));
     this.onMessage("setHat", (client, m: { hat: number }) => this.equip(client, "hat", m?.hat, HATS.length));
@@ -89,8 +89,15 @@ export class MineRoom extends Room<MineState> {
 
     this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
     this.clock.setInterval(() => this.pollDeposits(), 15000); // auto-credit incoming deposits
+    this.clock.setInterval(() => this.refreshTreasury(), 20000); // HUD treasury mirrors on-chain reserve
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
     this.spawnOre();
+    this.refreshTreasury();
+  }
+
+  /** HUD "Treasury" shows the REAL on-chain $HASHROCK reserve (balances UI with on-chain). */
+  private async refreshTreasury(): Promise<void> {
+    try { this.state.treasury = await chain.treasuryBalance(); } catch { /* keep last value */ }
   }
 
   async onJoin(client: Client, opts: { name?: string; playerId?: string } = {}): Promise<void> {
@@ -104,7 +111,7 @@ export class MineRoom extends Room<MineState> {
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
     p.x = c.x; p.y = c.y;
     p.name = prof.name; p.coins = prof.coins;
-    p.body = prof.body; p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axeOwned = prof.axeOwned;
+    p.body = prof.body; p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axesOwned = prof.axesOwned;
     p.skinsOwned = prof.skinsOwned;
     p.durability = prof.durability;
     p.throughput = axeMult(prof.axe);
@@ -185,7 +192,7 @@ export class MineRoom extends Room<MineState> {
     const v = Math.floor(raw ?? 0);
     const p = this.state.players.get(client.sessionId);
     if (!p || v < 0 || v >= len) return;
-    if (slot === "axe" && v > p.axeOwned) { client.send("buyErr", { msg: "buy this axe first" }); return; }
+    if (slot === "axe" && !(p.axesOwned & (1 << v))) { client.send("buyErr", { msg: "buy this axe first" }); return; }
     if (slot === "skin" && !(p.skinsOwned & (1 << v))) { client.send("buyErr", { msg: "buy this color skin first" }); return; }
     p[slot] = v;
     if (slot === "axe") p.throughput = axeMult(v);
@@ -200,7 +207,7 @@ export class MineRoom extends Room<MineState> {
     if (!p) return;
     if (!dest) return void client.send("buyErr", { msg: "connect your wallet first" });
     if (axe <= 0 || axe >= AXES.length) return void client.send("buyErr", { msg: "invalid axe" });
-    if (axe <= p.axeOwned) return void client.send("buyErr", { msg: "already owned — just equip it" });
+    if (p.axesOwned & (1 << axe)) return void client.send("buyErr", { msg: "already owned — just equip it" });
     try {
       const txb64 = await chain.buildPurchaseTx(dest, axePrice(axe));
       client.send("purchaseTx", { kind: "axe", axe, price: axePrice(axe), tx: txb64 });
@@ -220,8 +227,8 @@ export class MineRoom extends Room<MineState> {
       if (!dep || dep.amount < price || dep.source !== dest) return void client.send("buyErr", { msg: "payment not verified" });
       const cut = Math.round(price * CREATOR_FEE);
       if (!(await db.persistAxeBuy(this.pid.get(client.sessionId)!, axe, price, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
-      p.axe = axe; p.axeOwned = Math.max(p.axeOwned, axe); p.throughput = axeMult(axe);
-      this.state.pool += price - cut; this.state.creator += cut; this.state.treasury += price;
+      p.axe = axe; p.axesOwned |= (1 << axe); p.throughput = axeMult(axe);
+      this.state.pool += price - cut; this.state.creator += cut; this.refreshTreasury();
       client.send("buyOk", { axe, sig, url: chain.explorer(sig) });
       this.sendHashrock(client);
     } catch (e) { client.send("buyErr", { msg: "purchase verify failed" }); console.error("[buy]", e); }
@@ -254,7 +261,7 @@ export class MineRoom extends Room<MineState> {
       const cut = Math.round(price * CREATOR_FEE);
       if (!(await db.persistSkinBuy(this.pid.get(client.sessionId)!, skin, price, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
       p.skinsOwned |= (1 << skin); p.skin = skin;
-      this.state.pool += price - cut; this.state.creator += cut; this.state.treasury += price;
+      this.state.pool += price - cut; this.state.creator += cut; this.refreshTreasury();
       client.send("skinOk", { skin, sig, url: chain.explorer(sig) });
       this.sendHashrock(client);
     } catch (e) { client.send("buyErr", { msg: "skin verify failed" }); console.error("[buyskin]", e); }
@@ -283,7 +290,7 @@ export class MineRoom extends Room<MineState> {
       const cut = Math.round(REPAIR_COST * CREATOR_FEE);
       if (!(await db.persistRepair(this.pid.get(client.sessionId)!, REPAIR_COST, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
       p.durability = 100;
-      this.state.pool += REPAIR_COST - cut; this.state.creator += cut; this.state.treasury += REPAIR_COST;
+      this.state.pool += REPAIR_COST - cut; this.state.creator += cut; this.refreshTreasury();
       client.send("repairOk", { sig, url: chain.explorer(sig) });
       this.sendHashrock(client);
     } catch (e) { client.send("buyErr", { msg: "repair verify failed" }); console.error("[repair]", e); }
@@ -305,15 +312,16 @@ export class MineRoom extends Room<MineState> {
     if (amount < REDEEM_MIN) return void client.send("redeemErr", { msg: `min redeem is ${REDEEM_MIN}` });
     if (amount > p.coins) return void client.send("redeemErr", { msg: "not enough coins" });
     const playerId = this.pid.get(client.sessionId)!;
-    p.coins -= amount; this.state.treasury -= amount;
+    p.coins -= amount;
     await db.persistRedeem(playerId, amount);
     try {
       const sig = await chain.redeemTo(dest, amount);
       client.send("redeemOk", { amount, sig, url: chain.explorer(sig) });
       this.sendHashrock(client); // refresh on-chain balance
+      this.refreshTreasury();
 
     } catch (e) {
-      p.coins += amount; this.state.treasury += amount;
+      p.coins += amount;
       await db.refundRedeem(playerId, amount);
       client.send("redeemErr", { msg: "on-chain transfer failed (refunded)" });
       console.error("[redeem]", e);
@@ -330,7 +338,7 @@ export class MineRoom extends Room<MineState> {
       if (!dep) return void client.send("depositErr", { msg: "no $HASHROCK deposit found in that tx" });
       const ok = await db.persistDeposit(this.pid.get(client.sessionId)!, dep.amount, sig);
       if (!ok) return void client.send("depositErr", { msg: "already credited" });
-      p.coins += dep.amount; this.state.treasury += dep.amount;
+      p.coins += dep.amount; this.refreshTreasury();
       client.send("depositOk", { amount: dep.amount, sig, url: chain.explorer(sig) });
     } catch (e) { client.send("depositErr", { msg: "verify failed" }); console.error("[deposit]", e); }
   }
@@ -349,7 +357,7 @@ export class MineRoom extends Room<MineState> {
         const playerId = await db.playerByWallet(dep.source);
         if (!playerId) continue;
         if (!(await db.persistDeposit(playerId, dep.amount, sig))) continue; // already credited
-        this.state.treasury += dep.amount;
+        this.refreshTreasury();
         const sid = [...this.pid.entries()].find(([, pidv]) => pidv === playerId)?.[0];
         if (sid) {
           const p = this.state.players.get(sid);

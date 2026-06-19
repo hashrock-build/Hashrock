@@ -112,6 +112,17 @@
       background: radial-gradient(circle at 50% 76%, rgba(143,228,245,.18), transparent 64%); border-radius: 14px;
       box-shadow: inset 0 0 0 1px rgba(143,228,245,.14), inset 0 0 30px rgba(143,228,245,.06); }
     .pvslot canvas { image-rendering: pixelated; }
+    /* upgrade stats comparison */
+    .upstats { margin-top: 8px; }
+    .upcols { display: flex; gap: 8px; align-items: stretch; }
+    .upcol { flex: 1; background: #15122a; border: 1px solid #34304e; border-radius: 10px; padding: 8px 10px; }
+    .upcol.next { border-color: #ffd23f; box-shadow: inset 0 0 0 1px rgba(255,210,90,.3); }
+    .upcol .tier { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 13px; margin-bottom: 6px; }
+    .upcol .tier img { image-rendering: pixelated; height: 26px; }
+    .upcol .srow { display: flex; justify-content: space-between; font-size: 11px; color: #cfc8e8; margin: 2px 0; }
+    .upcol .srow span { color: #8fe4f5; font-variant-numeric: tabular-nums; }
+    .uparrow { display: flex; align-items: center; color: #ffd23f; font-size: 20px; }
+    .upcol .lbl { font-size: 10px; color: #9a92c0; text-transform: uppercase; letter-spacing: .4px; }
   </style>
 </head>
 <body>
@@ -200,12 +211,34 @@
     <div class="panel card">
       <button class="x" id="redeemDoneClose">×</button>
       <div class="phead">✅ Redeem Successful</div>
-      <div class="prow" style="font-size:15px">released <b id="rdAmount">0</b> 💎 $HASHROCK</div>
-      <div class="prow dim">→ sent to your connected wallet (1:1)</div>
-      <div class="prow dim" style="margin-top:8px">transaction hash</div>
-      <div id="rdSig" class="mono" style="font-family:ui-monospace,monospace;font-size:10px;color:#9a92c0;word-break:break-all;background:#15122a;border:1px solid #34304e;border-radius:7px;padding:6px 8px;margin:2px 0">—</div>
-      <button id="rdCopy" class="ghost mini" style="margin-top:6px">📋 Copy tx hash</button>
-      <a id="rdLink" href="#" target="_blank" rel="noreferrer" style="text-decoration:none"><button style="margin-top:8px;width:100%">🔎 View on Solscan</button></a>
+      <div style="text-align:center;font-size:34px;margin:6px 0">💎</div>
+      <div class="prow" style="font-size:15px;justify-content:center">released <b id="rdAmount">0</b>&nbsp;$HASHROCK</div>
+      <div class="prow dim" style="justify-content:center">→ sent to your connected wallet (1:1)</div>
+      <a id="rdLink" href="#" target="_blank" rel="noreferrer" style="text-decoration:none"><button style="margin-top:12px;width:100%">🔎 View on Solscan</button></a>
+    </div>
+  </div>
+
+  <!-- generic purchase/repair success popup -->
+  <div id="buyDoneModal" class="modal">
+    <div class="panel card">
+      <button class="x" id="buyDoneClose">×</button>
+      <div class="phead" id="bdHead">✅ Success</div>
+      <div style="text-align:center;font-size:34px;margin:6px 0" id="bdIcon">🛒</div>
+      <div class="prow" style="font-size:15px;justify-content:center" id="bdMsg">Purchase complete</div>
+      <div class="prow dim" style="justify-content:center">paid in $HASHROCK · 95% pool / 5% creator</div>
+      <a id="bdLink" href="#" target="_blank" rel="noreferrer" style="text-decoration:none"><button style="margin-top:12px;width:100%">🔎 View on Solscan</button></a>
+    </div>
+  </div>
+
+  <!-- upgrade popup: select item → current vs next-level stats -->
+  <div id="upgradeModal" class="modal">
+    <div class="panel card">
+      <button class="x" id="upgradeClose">×</button>
+      <div class="phead">⚒ Upgrade</div>
+      <div class="prow dim">select item to upgrade</div>
+      <div id="upItems" class="picker"></div>
+      <div id="upStats" class="upstats"></div>
+      <button id="upAction" style="margin-top:10px;width:100%">Upgrade</button>
     </div>
   </div>
 

@@ -18,7 +18,7 @@ const MOVE_SEND_MS = 80;       // throttle position updates to the server
 const BASE_MINE_TIME = 30;     // for the local progress bar only (server is authoritative)
 
 interface NetOre { id: number; gx: number; gy: number; hp: number; maxHp: number; blockhash: string; }
-interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; body: number; durability: number; }
+interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; hair: number; hat: number; axe: number; axesOwned: number; body: number; durability: number; }
 
 export interface WorldAssets {
   groundTiles?: GroundTiles;
@@ -130,7 +130,7 @@ export class World {
   get hair(): number { return this.state?.players?.get(this.room.sessionId)?.hair ?? 0; }
   get hat(): number { return this.state?.players?.get(this.room.sessionId)?.hat ?? 0; }
   get axe(): number { return this.state?.players?.get(this.room.sessionId)?.axe ?? 0; }
-  get axeOwned(): number { return this.state?.players?.get(this.room.sessionId)?.axeOwned ?? 0; }
+  get axesOwned(): number { return this.state?.players?.get(this.room.sessionId)?.axesOwned ?? 1; }
   get skinsOwned(): number { return this.state?.players?.get(this.room.sessionId)?.skinsOwned ?? 1; }
   get body(): number { return this.state?.players?.get(this.room.sessionId)?.body ?? 0; }
   get durability(): number { return this.state?.players?.get(this.room.sessionId)?.durability ?? 100; }

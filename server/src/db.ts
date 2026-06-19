@@ -44,6 +44,15 @@ export async function initSchema(seedPool: number): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS durability INT NOT NULL DEFAULT 100`);
   // owned color-skins as a bitmask (bit i = skin i); bit 0 (Grey) is the free starter
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS skins_owned INT NOT NULL DEFAULT 1`);
+  // owned axes as a bitmask (bit i = axe i); bit 0 (Wooden) is the free starter. Migrate by
+  // reconstructing EXACTLY which axes were bought from the ledger (the old `axe_owned`
+  // highest-tier counter wrongly implied ownership of every lower tier — the bug we're fixing).
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS axes_owned INT NOT NULL DEFAULT 1`);
+  await pool.query(`
+    UPDATE players p SET axes_owned = 1 | COALESCE(
+      (SELECT bit_or(1 << ((l.meta->>'axe')::int)) FROM ledger l
+       WHERE l.kind = 'buy_axe' AND l.player_id = p.id AND (l.meta->>'axe') IS NOT NULL), 0)
+    WHERE p.axes_owned = 1`);
   // seed economy: pool = seed, treasury backs it 1:1 (= seed), creator = 0
   await pool.query(
     `INSERT INTO economy (id, pool, creator, treasury) VALUES (1, $1, 0, $1)
@@ -102,13 +111,13 @@ export async function getEconomy(): Promise<Economy> {
   return { pool: n(rows[0].pool), creator: n(rows[0].creator), treasury: n(rows[0].treasury) };
 }
 
-export interface Profile { coins: number; body: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; skinsOwned: number; durability: number; name: string; }
+export interface Profile { coins: number; body: number; skin: number; hair: number; hat: number; axe: number; axesOwned: number; skinsOwned: number; durability: number; name: string; }
 /** Create the player row if missing (without clobbering a saved username); returns profile. */
 export async function ensurePlayer(id: string, name: string): Promise<Profile> {
   await pool.query(`INSERT INTO players (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, name]);
-  const { rows } = await pool.query(`SELECT coins, body, skin, hair, hat, axe, axe_owned, skins_owned, durability, name FROM players WHERE id = $1`, [id]);
+  const { rows } = await pool.query(`SELECT coins, body, skin, hair, hat, axe, axes_owned, skins_owned, durability, name FROM players WHERE id = $1`, [id]);
   const r = rows[0];
-  return { coins: n(r.coins), body: n(r.body), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axeOwned: n(r.axe_owned), skinsOwned: n(r.skins_owned), durability: n(r.durability), name: r.name };
+  return { coins: n(r.coins), body: n(r.body), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axesOwned: n(r.axes_owned), skinsOwned: n(r.skins_owned), durability: n(r.durability), name: r.name };
 }
 export async function setDurability(id: string, durability: number): Promise<void> {
   await pool.query(`UPDATE players SET durability = $2 WHERE id = $1`, [id, durability]);
@@ -131,7 +140,7 @@ export async function persistAxeBuy(playerId: string, axe: number, price: number
   const dup = await pool.query(`SELECT 1 FROM ledger WHERE kind = 'buy_axe' AND meta->>'sig' = $1 LIMIT 1`, [sig]);
   if (dup.rowCount) return false;
   await tx(async (c) => {
-    await c.query(`UPDATE players SET axe = $2, axe_owned = GREATEST(axe_owned, $2) WHERE id = $1`, [playerId, axe]);
+    await c.query(`UPDATE players SET axe = $2, axes_owned = axes_owned | $3 WHERE id = $1`, [playerId, axe, 1 << axe]);
     await c.query(`UPDATE economy SET treasury = treasury + $1, pool = pool + $2, creator = creator + $3 WHERE id = 1`, [price, price - cut, cut]);
     await c.query(`INSERT INTO ledger (kind, player_id, amount, pool_delta, creator_delta, treasury_delta, meta) VALUES ('buy_axe', $1, $2, $3, $4, $5, $6)`,
       [playerId, 0, price - cut, cut, price, JSON.stringify({ sig, axe, price })]);

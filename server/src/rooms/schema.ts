@@ -23,7 +23,7 @@ export class PlayerState extends Schema {
   @type("number") hair = 0;        // hair cosmetic id
   @type("number") hat = 0;         // hat cosmetic id
   @type("number") axe = 0;         // equipped axe rarity id (drives throughput)
-  @type("number") axeOwned = 0;    // highest axe tier owned (bought on-chain)
+  @type("number") axesOwned = 1;   // owned axes bitmask (bit i = axe i; bit 0 = free Wooden)
   @type("number") skinsOwned = 1;  // owned color-skins bitmask (bit i = skin i; bit 0 = free Grey)
   @type("number") durability = 100; // axe durability; drops while mining, restored by repair
 }

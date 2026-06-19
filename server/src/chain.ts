@@ -54,6 +54,11 @@ export const mintAddress = (): string => mint.toBase58();
 export const explorer = (sig: string): string => `https://solscan.io/tx/${sig}?cluster=devnet`;
 export function isValidAddress(s: string): boolean { try { new PublicKey(s); return true; } catch { return false; } }
 
+/** On-chain $HASHROCK balance held by the treasury (the real reserve, shown in the HUD). */
+export async function treasuryBalance(): Promise<number> {
+  try { return Number((await getAccount(conn, treasuryAta)).amount); } catch { return 0; }
+}
+
 /** On-chain $HASHROCK balance of an address (0 if no token account yet). */
 export async function tokenBalance(address: string): Promise<number> {
   try {

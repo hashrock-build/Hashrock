@@ -10,7 +10,6 @@ import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadCharacters } from "./player";
 import { loadProps } from "./props";
 
-const UPGRADE_COST = 5000; // mirror of server (DEMO sink)
 const $ = (id: string) => document.getElementById(id)!;
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
@@ -59,6 +58,7 @@ async function main(): Promise<void> {
     $("pdur").textContent = String(world.durability);
     if ($("profileModal").classList.contains("show")) { buildPickers(); updatePreview(); }
     if ($("marketModal").classList.contains("show")) { buildShop(); buildSkins(); updatePreview(); }
+    if ($("upgradeModal").classList.contains("show")) buildUpgrade();
   };
 
   // ---- live event feed (comment-style: newest at bottom, oldest rises off the top) ----
@@ -81,16 +81,50 @@ async function main(): Promise<void> {
   render();
 
   // ---- actions ----
-  // Upgrade will branch into axe / character / speed later; for now it runs the demo sink.
-  upgradeBtn.addEventListener("click", () => {
-    if (world.coins < UPGRADE_COST) { toast(`Need ${fmt(UPGRADE_COST)} coins to upgrade`); return; }
-    world.upgrade();
-    toast("⚒ Upgraded (demo sink → 95% pool / 5% creator)");
-  });
+  // Upgrade: popup to pick an item (axe) and see current-vs-next level stats, then buy/equip.
+  let upSel = "axe"; // selected item to upgrade (only axe for now)
+  const buildUpgrade = () => {
+    const items = $("upItems"); items.innerHTML = "";
+    [{ key: "axe", label: "⛏ Axe" }].forEach((it) => {
+      const c = document.createElement("div");
+      c.className = "chip" + (upSel === it.key ? " sel" : "");
+      c.textContent = it.label;
+      c.onclick = () => { upSel = it.key; buildUpgrade(); };
+      items.appendChild(c);
+    });
+    const cur = AXES[world.axe] ?? AXES[0];
+    const nxt = AXES[world.axe + 1]; // the next tier up from what's equipped
+    const stats = $("upStats");
+    const curCol =
+      `<div class="upcol"><div class="lbl">current</div>` +
+      `<div class="tier"><img src="/assets/axes/axe_${cur.id}.png">${cur.name}</div>` +
+      `<div class="srow">mining <span>${cur.mult}×</span></div>` +
+      `<div class="srow">durability <span>${world.durability}%</span></div>` +
+      `<div class="srow">tier <span>${cur.id + 1}/${AXES.length}</span></div></div>`;
+    const upBtn = $("upAction") as HTMLButtonElement;
+    if (!nxt) {
+      stats.innerHTML = `<div class="upcols">${curCol}</div>`;
+      upBtn.textContent = "Max tier reached"; upBtn.disabled = true; upBtn.onclick = null;
+    } else {
+      const owned = (world.axesOwned & (1 << nxt.id)) !== 0;
+      const gain = `+${Math.round((nxt.mult / cur.mult - 1) * 100)}% mining`;
+      stats.innerHTML =
+        `<div class="upcols">${curCol}<div class="uparrow">→</div>` +
+        `<div class="upcol next"><div class="lbl">after upgrade</div>` +
+        `<div class="tier"><img src="/assets/axes/axe_${nxt.id}.png">${nxt.name}</div>` +
+        `<div class="srow">mining <span>${nxt.mult}× <span style="color:#8ef5a8">(${gain})</span></span></div>` +
+        `<div class="srow">durability <span>100%</span></div>` +
+        `<div class="srow">tier <span>${nxt.id + 1}/${AXES.length}</span></div></div></div>`;
+      upBtn.disabled = false;
+      upBtn.textContent = owned ? `Equip ${nxt.name}` : `Upgrade to ${nxt.name} — ${fmt(nxt.price)} $HASHROCK`;
+      upBtn.onclick = () => net!.room.send(owned ? "setAxe" : "buildAxePurchase", { axe: nxt.id });
+    }
+  };
+  upgradeBtn.addEventListener("click", () => { buildUpgrade(); showModal("upgradeModal"); });
   const buildShop = () => {
     const el = $("shopaxes"); el.innerHTML = "";
     AXES.forEach((a) => {
-      const owned = a.id <= world.axeOwned;
+      const owned = (world.axesOwned & (1 << a.id)) !== 0;
       const row = document.createElement("div");
       row.className = "shoprow";
       row.innerHTML =
@@ -124,16 +158,21 @@ async function main(): Promise<void> {
   // ---- modal helpers ----
   const showModal = (id: string) => $(id).classList.add("show");
   const closeModal = (id: string) => $(id).classList.remove("show");
-  for (const id of ["profileModal", "redeemModal", "marketModal", "redeemDoneModal"]) {
+  for (const id of ["profileModal", "redeemModal", "marketModal", "redeemDoneModal", "buyDoneModal", "upgradeModal"]) {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) closeModal(id); });
   }
   $("profileClose").addEventListener("click", () => closeModal("profileModal"));
   $("redeemClose").addEventListener("click", () => closeModal("redeemModal"));
   $("marketClose").addEventListener("click", () => closeModal("marketModal"));
   $("redeemDoneClose").addEventListener("click", () => closeModal("redeemDoneModal"));
-  $("rdCopy").addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText($("rdSig").textContent ?? ""); toast("📋 tx hash copied"); } catch { toast("copy failed"); }
-  });
+  $("buyDoneClose").addEventListener("click", () => closeModal("buyDoneModal"));
+  $("upgradeClose").addEventListener("click", () => closeModal("upgradeModal"));
+  // generic purchase/repair success popup (card + View on Solscan; no auto-opening tabs)
+  const showBuyDone = (icon: string, head: string, msg: string, url: string) => {
+    $("bdIcon").textContent = icon; $("bdHead").textContent = head; $("bdMsg").textContent = msg;
+    ($("bdLink") as HTMLAnchorElement).href = url;
+    showModal("buyDoneModal");
+  };
 
   // ---- cosmetic / axe pickers (rebuilt from authoritative state) ----
   const hex6 = (c: number) => "#" + (c >>> 0).toString(16).padStart(6, "0");
@@ -161,7 +200,7 @@ async function main(): Promise<void> {
     });
     const ap = $("axepicker"); ap.innerHTML = "";
     AXES.forEach((a) => {
-      const owned = a.id <= world.axeOwned;
+      const owned = (world.axesOwned & (1 << a.id)) !== 0;
       const c = document.createElement("div");
       c.className = "chip" + (world.axe === a.id ? " sel" : "");
       const label = owned ? `${a.name} · ${a.mult}×` : `${a.name} · ${a.mult}× · buy ${fmt(a.price)}`;
@@ -178,7 +217,6 @@ async function main(): Promise<void> {
   net.room.onMessage("redeemOk", (m: { amount: number; sig: string; url: string }) => {
     closeModal("redeemModal");
     $("rdAmount").textContent = fmt(m.amount);
-    $("rdSig").textContent = m.sig;
     ($("rdLink") as HTMLAnchorElement).href = m.url;
     ($("redeemconfirm") as HTMLButtonElement).disabled = false;
     showModal("redeemDoneModal");
@@ -196,9 +234,18 @@ async function main(): Promise<void> {
       else net!.room.send("confirmAxePurchase", { axe: m.axe, sig });
     } catch (e) { toast("cancelled"); console.error(e); }
   });
-  net.room.onMessage("buyOk", (m: { axe: number; url: string }) => { toast(`✅ bought ${AXES[m.axe]?.name} axe`); window.open(m.url, "_blank"); buildPickers(); buildShop(); });
-  net.room.onMessage("skinOk", (m: { skin: number; url: string }) => { toast(`✅ bought ${SKINS[m.skin]?.name} color skin`); window.open(m.url, "_blank"); buildPickers(); buildSkins(); updatePreview(); });
-  net.room.onMessage("repairOk", (m: { url: string }) => { toast("✅ axe repaired (100%)"); window.open(m.url, "_blank"); });
+  net.room.onMessage("buyOk", (m: { axe: number; url: string }) => {
+    buildPickers(); buildShop(); buildUpgrade();
+    showBuyDone("⛏", "✅ Axe Purchased", `${AXES[m.axe]?.name} axe equipped`, m.url);
+  });
+  net.room.onMessage("skinOk", (m: { skin: number; url: string }) => {
+    buildPickers(); buildSkins(); updatePreview();
+    showBuyDone("🎨", "✅ Skin Purchased", `${SKINS[m.skin]?.name} color skin equipped`, m.url);
+  });
+  net.room.onMessage("repairOk", (m: { url: string }) => {
+    buildUpgrade();
+    showBuyDone("🔧", "✅ Axe Repaired", "durability restored to 100%", m.url);
+  });
   net.room.onMessage("buyErr", (m: { msg: string }) => toast("⚠ " + m.msg));
 
   $("repair").addEventListener("click", () => {

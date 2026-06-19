@@ -47,13 +47,12 @@ async function loadOne(base: string): Promise<PlayerAnims> {
   return { idle, walk, crush };
 }
 
-export const CHARACTERS = ["Rookie", "Hunter"]; // body index → name
+export const CHARACTERS = ["Rookie"]; // body index → name (Hunter removed for now)
 
 /** Load every selectable character body (same 4-direction format). */
 export async function loadCharacters(): Promise<PlayerAnims[]> {
   return Promise.all([
-    loadOne("/assets/character"),         // Body_A (default)
-    loadOne("/assets/characters/hunter"), // A_Hunter
+    loadOne("/assets/character"), // Body_A (default)
   ]);
 }
 
