@@ -2,7 +2,7 @@ import { Application } from "pixi.js";
 import { World } from "./world";
 import { connect } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
-import { SKINS, HAIRS, HATS, AXES, RARITY_COLOR, type Cosmetic } from "../shared/items";
+import { SKINS, AXES, RARITY_COLOR, type Cosmetic } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadPlayerAnims } from "./player";
 import { loadProps } from "./props";
@@ -105,8 +105,6 @@ async function main(): Promise<void> {
   };
   function buildPickers(): void {
     fillCos("skinpicker", SKINS, world.skin, "setSkin", "skin");
-    fillCos("hairpicker", HAIRS, world.hair, "setHair", "hair");
-    fillCos("hatpicker", HATS, world.hat, "setHat", "hat");
     const ap = $("axepicker"); ap.innerHTML = "";
     AXES.forEach((a) => {
       const c = document.createElement("div");
