@@ -3,9 +3,10 @@
 FROM node:22-alpine
 WORKDIR /app
 
-# install deps first (layer cache) — tsx is the runtime, so dev deps stay in the image
+# install deps first (layer cache) — tsx is the runtime, so dev deps stay in the image.
+# npm install (not ci) so a slightly out-of-sync lockfile doesn't fail the build.
 COPY server/package.json server/package-lock.json ./server/
-RUN cd server && npm ci
+RUN cd server && npm install --no-audit --no-fund
 
 # source: shared map-truth/items + server code (treasury secret is MOUNTED at runtime, never baked)
 COPY shared/ ./shared/
