@@ -2,6 +2,7 @@ import { Application } from "pixi.js";
 import { World } from "./world";
 import { connect } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
+import { SKINS, AXES } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadPlayerAnims } from "./player";
 import { loadProps } from "./props";
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
     $("treasury").textContent = fmt(world.treasury);
     $("count").textContent = `${world.oreCount}/${world.cap}`;
     $("pcoins").textContent = fmt(world.coins);
+    if ($("profileModal").classList.contains("show")) buildPickers();
   };
 
   // ---- live event feed (comment-style: newest at bottom, oldest rises off the top) ----
@@ -77,50 +79,89 @@ async function main(): Promise<void> {
   $("marketplace").addEventListener("click", () => toast("🛒 Marketplace — planned"));
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
 
-  // ---- on-chain redeem + balances ($HASHROCK devnet) ----
+  // ---- modal helpers ----
+  const showModal = (id: string) => $(id).classList.add("show");
+  const closeModal = (id: string) => $(id).classList.remove("show");
+  for (const id of ["profileModal", "redeemModal"]) {
+    $(id).addEventListener("click", (e) => { if (e.target === $(id)) closeModal(id); });
+  }
+  $("profileClose").addEventListener("click", () => closeModal("profileModal"));
+  $("redeemClose").addEventListener("click", () => closeModal("redeemModal"));
+
+  // ---- skin / axe pickers (rebuilt from authoritative state) ----
+  function buildPickers(): void {
+    const sp = $("skinpicker"); sp.innerHTML = "";
+    SKINS.forEach((s) => {
+      const c = document.createElement("div");
+      c.className = "chip" + (world.skin === s.id ? " sel" : "");
+      c.innerHTML = `<span class="dot" style="background:#${(s.tint >>> 0).toString(16).padStart(6, "0")}"></span>${s.name}`;
+      c.addEventListener("click", () => net!.room.send("setSkin", { skin: s.id }));
+      sp.appendChild(c);
+    });
+    const ap = $("axepicker"); ap.innerHTML = "";
+    AXES.forEach((a) => {
+      const c = document.createElement("div");
+      c.className = "chip" + (world.axe === a.id ? " sel" : "");
+      c.innerHTML = `<span class="dot" style="background:${a.color}"></span>${a.name} · ${a.mult}×`;
+      c.addEventListener("click", () => net!.room.send("setAxe", { axe: a.id }));
+      ap.appendChild(c);
+    });
+  }
+
+  // ---- on-chain message handlers ----
   net.room.onMessage("hashrock", (m: { amount: number }) => { $("phashrock").textContent = fmt(m.amount); });
   net.room.onMessage("walletErr", (m: { msg: string }) => toast("⚠ " + m.msg));
   net.room.onMessage("nameSet", (m: { name: string }) => toast(`✅ username set: ${m.name}`));
-  net.room.onMessage("redeemOk", (m: { amount: number; url: string }) => { toast(`✅ redeemed ${fmt(m.amount)} $HASHROCK`); window.open(m.url, "_blank"); });
+  net.room.onMessage("redeemOk", (m: { amount: number; url: string }) => { toast(`✅ redeemed ${fmt(m.amount)} $HASHROCK`); window.open(m.url, "_blank"); closeModal("redeemModal"); });
   net.room.onMessage("redeemErr", (m: { msg: string }) => toast("⚠ redeem: " + m.msg));
 
-  $("redeembtn").addEventListener("click", () => {
-    const v = prompt("Redeem how many coins → $HASHROCK? (min 10, sent to your connected wallet)");
-    const amt = Math.floor(Number(v));
-    if (amt > 0) net!.room.send("redeem", { amount: amt });
+  // ---- wallet button: Connect → (connected) Profile → opens popup ----
+  const walletBtn = $("wallet") as HTMLButtonElement;
+  let connected = false;
+  const onConnected = (addr: string) => {
+    connected = true;
+    walletBtn.textContent = "👤 Profile";
+    $("pwallet").textContent = addr;
+    net!.room.send("setWallet", { address: addr });
+    net!.room.send("getHashrock");
+  };
+  const openProfile = () => {
+    ($("usernameinput") as HTMLInputElement).value = world.pname;
+    buildPickers();
+    render();
+    showModal("profileModal");
+  };
+  walletBtn.addEventListener("click", async () => {
+    if (connected) return openProfile();
+    if (!getPhantom()) return void toast("No Solana wallet found — install Phantom/Backpack");
+    const addr = await connectPhantom(false);
+    if (addr) { onConnected(addr); toast("✅ wallet connected — click Profile"); }
+    else toast("wallet connection cancelled");
   });
+
+  // ---- profile actions ----
   $("savename").addEventListener("click", () => {
     const name = ($("usernameinput") as HTMLInputElement).value.trim();
     if (name) net!.room.send("setName", { name });
   });
-
-  // ---- wallet / profile (Solana wallet: Phantom / Backpack / Solflare) ----
-  const walletBtn = $("wallet"), profile = $("profile");
-  const myName = (): string => (net!.room.state as { players?: { get(k: string): { name?: string } | undefined } }).players?.get(net!.room.sessionId)?.name ?? "";
-  const openProfile = (addr?: string) => {
-    walletBtn.classList.add("hidden");
-    profile.classList.remove("hidden");
-    ($("usernameinput") as HTMLInputElement).value = myName();
-    if (addr) {
-      $("pwallet").textContent = addr;
-      net!.room.send("setWallet", { address: addr }); // auto-save the connected wallet
-      net!.room.send("getHashrock");
-    }
-    render();
-  };
-  walletBtn.addEventListener("click", async () => {
-    if (!getPhantom()) { toast("No Solana wallet found — install Phantom/Backpack"); return; }
-    const addr = await connectPhantom(false);
-    if (addr) { openProfile(addr); toast("✅ wallet connected"); }
-    else toast("wallet connection cancelled");
+  $("redeembtn").addEventListener("click", () => {
+    $("rcoins").textContent = fmt(world.coins);
+    ($("redeemamount") as HTMLInputElement).value = "";
+    closeModal("profileModal"); showModal("redeemModal");
+  });
+  $("redeemconfirm").addEventListener("click", () => {
+    const amt = Math.floor(Number(($("redeemamount") as HTMLInputElement).value));
+    if (amt > 0) net!.room.send("redeem", { amount: amt });
   });
   $("disconnect").addEventListener("click", async () => {
     await disconnectPhantom();
-    profile.classList.add("hidden");
-    walletBtn.classList.remove("hidden");
+    connected = false;
+    walletBtn.textContent = "🔗 Connect Wallet";
+    closeModal("profileModal");
   });
-  // auto-reconnect if the user already trusted this site
-  connectPhantom(true).then((addr) => { if (addr) openProfile(addr); });
+
+  // auto-reconnect if already trusted (button → Profile, popup stays closed)
+  connectPhantom(true).then((addr) => { if (addr) onConnected(addr); });
 }
 
 main();

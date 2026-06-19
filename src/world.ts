@@ -10,6 +10,7 @@ import { Player, PlayerAnims } from "./player";
 import { WorldProps } from "./props";
 import { MAP_W, MAP_H, idx, inB, buildVillage, Village } from "./village";
 import { GroundLayer } from "./ground";
+import { SKINS } from "../shared/items";
 
 const MINE_RANGE = TILE * 1.6;
 const MOVE_SPEED = 130;        // px/sec (client prediction; server validates range)
@@ -17,7 +18,7 @@ const MOVE_SEND_MS = 80;       // throttle position updates to the server
 const BASE_MINE_TIME = 30;     // for the local progress bar only (server is authoritative)
 
 interface NetOre { id: number; gx: number; gy: number; hp: number; maxHp: number; blockhash: string; }
-interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; }
+interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; axe: number; }
 
 export interface WorldAssets {
   groundTiles?: GroundTiles;
@@ -120,6 +121,9 @@ export class World {
   get treasury(): number { return this.state?.treasury ?? 0; }
   get oreCount(): number { return this.state?.ores?.size ?? 0; }
   get cap(): number { return this.state?.cap ?? 150; }
+  get skin(): number { return this.state?.players?.get(this.room.sessionId)?.skin ?? 0; }
+  get axe(): number { return this.state?.players?.get(this.room.sessionId)?.axe ?? 0; }
+  get pname(): string { return this.state?.players?.get(this.room.sessionId)?.name ?? ""; }
 
   upgrade(): void { this.room.send("upgrade"); }
 
@@ -140,6 +144,8 @@ export class World {
           if (prev !== undefined && v > prev) this.floatText(this.px, this.py, `+${v - prev}`);
           this.onChange?.();
         });
+        this.applySkin(p.skin);
+        $(p).listen("skin", (v: number) => this.applySkin(v));
       } else {
         this.addOther(sid, p);
         $(p).onChange(() => this.updateOther(sid, p));
@@ -186,12 +192,16 @@ export class World {
     name.anchor.set(0.5, 1); name.y = -TILE * 0.7;
     c.addChild(g, name);
     c.x = p.x; c.y = p.y; c.zIndex = p.y;
+    c.tint = SKINS[p.skin]?.tint ?? 0xffffff;
     this.entities.addChild(c);
     this.others.set(sid, c);
   }
   private updateOther(sid: string, p: NetPlayer): void {
     const c = this.others.get(sid);
-    if (c) { c.x = p.x; c.y = p.y; c.zIndex = p.y; }
+    if (c) { c.x = p.x; c.y = p.y; c.zIndex = p.y; c.tint = SKINS[p.skin]?.tint ?? 0xffffff; }
+  }
+  private applySkin(skinId: number): void {
+    this.playerNode.tint = SKINS[skinId]?.tint ?? 0xffffff;
   }
   private removeOther(sid: string): void { this.others.get(sid)?.destroy(); this.others.delete(sid); }
 

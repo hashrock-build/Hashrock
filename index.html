@@ -67,6 +67,17 @@
              color: #ece9ff; padding: 8px 14px; border-radius: 10px; border: 1px solid #34304e; font-size: 12px;
              opacity: 0; transition: opacity .2s; pointer-events: none; }
     #toast.show { opacity: 1; }
+
+    /* popups */
+    .modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); z-index: 100; }
+    .modal.show { display: flex; }
+    .card { position: relative; width: 300px; max-width: 92vw; max-height: 88vh; overflow-y: auto; }
+    .card .x { position: absolute; top: 6px; right: 8px; padding: 2px 8px; background: transparent; color: #cfc8e8; font-size: 16px; font-weight: 700; }
+    .picker { display: flex; flex-wrap: wrap; gap: 5px; margin: 3px 0; }
+    .chip { cursor: pointer; border: 1px solid #34304e; border-radius: 8px; padding: 4px 8px; font-size: 11px;
+            background: #1a1730; color: #cfc8e8; display: flex; align-items: center; gap: 5px; }
+    .chip.sel { border-color: #ffd23f; box-shadow: inset 0 0 0 1px #ffd23f; }
+    .chip .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   </style>
 </head>
 <body>
@@ -81,25 +92,6 @@
 
   <div id="right">
     <button id="wallet">🔗 Connect Wallet</button>
-    <div id="profile" class="panel hidden">
-      <div class="phead">👤 Profile</div>
-      <input id="usernameinput" placeholder="set a username" spellcheck="false" maxlength="16" />
-      <button id="savename" class="ghost mini">Save username</button>
-
-      <div class="prow" style="margin-top:8px">🪙 coins <b id="pcoins">0</b></div>
-      <div class="prow">💎 $HASHROCK <b id="phashrock">0</b></div>
-      <div class="prow dim">wallet</div>
-      <div id="pwallet" class="mono">not connected</div>
-
-      <div class="prow dim" style="margin-top:8px">inventory</div>
-      <div class="inv">
-        <div class="invrow">🧍 Character <span id="invchar">Rookie</span></div>
-        <div class="invrow">⛏ Axe <span id="invaxe">Wooden · Lv 1</span></div>
-      </div>
-
-      <button id="redeembtn" style="margin-top:8px">💱 Request Redeem</button>
-      <button id="disconnect" class="ghost mini">Disconnect</button>
-    </div>
   </div>
 
   <div id="center" class="panel"><span class="clabel">⛏ coins mined</span> <b id="coins">0</b></div>
@@ -114,6 +106,41 @@
 
   <div id="tip"><kbd>WASD</kbd> move · press <kbd>Space</kbd> to mine</div>
   <div id="toast"></div>
+
+  <!-- profile popup -->
+  <div id="profileModal" class="modal">
+    <div id="profile" class="panel card">
+      <button class="x" id="profileClose">×</button>
+      <div class="phead">👤 Profile</div>
+      <input id="usernameinput" placeholder="set a username" spellcheck="false" maxlength="16" />
+      <button id="savename" class="ghost mini">Save username</button>
+
+      <div class="prow" style="margin-top:8px">🪙 coins <b id="pcoins">0</b></div>
+      <div class="prow">💎 $HASHROCK <b id="phashrock">0</b></div>
+      <div class="prow dim">wallet</div>
+      <div id="pwallet" class="mono">—</div>
+
+      <div class="prow dim" style="margin-top:8px">character skin</div>
+      <div id="skinpicker" class="picker"></div>
+      <div class="prow dim" style="margin-top:6px">axe rarity <span class="dim" style="font-size:10px">(preview — buy on-chain later)</span></div>
+      <div id="axepicker" class="picker"></div>
+
+      <button id="redeembtn" style="margin-top:10px">💱 Request Redeem</button>
+      <button id="disconnect" class="ghost mini">Disconnect</button>
+    </div>
+  </div>
+
+  <!-- redeem popup -->
+  <div id="redeemModal" class="modal">
+    <div class="panel card">
+      <button class="x" id="redeemClose">×</button>
+      <div class="phead">💱 Request Redeem</div>
+      <div class="prow dim">coins available <b id="rcoins">0</b></div>
+      <div class="prow dim">→ sent to your connected wallet as $HASHROCK (1:1)</div>
+      <input id="redeemamount" type="number" min="10" placeholder="amount (min 10)" />
+      <button id="redeemconfirm" style="margin-top:6px">Confirm redeem</button>
+    </div>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

@@ -12,6 +12,7 @@ import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
 import * as chain from "../chain";
 import * as gen from "../../../shared/mapgen";
+import { SKINS, AXES, axeMult } from "../../../shared/items";
 
 const TILE = gen.TILE;
 const MAP_W = gen.MAP_W, MAP_H = gen.MAP_H;
@@ -62,6 +63,8 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
     this.onMessage("setWallet", (client, m: { address: string }) => this.onSetWallet(client, m));
     this.onMessage("setName", (client, m: { name: string }) => this.onSetName(client, m));
+    this.onMessage("setSkin", (client, m: { skin: number }) => this.onSetSkin(client, m));
+    this.onMessage("setAxe", (client, m: { axe: number }) => this.onSetAxe(client, m));
     this.onMessage("getHashrock", (client) => this.sendHashrock(client));
     this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
@@ -75,12 +78,14 @@ export class MineRoom extends Room<MineState> {
     const playerId = (opts.playerId || client.sessionId).slice(0, 64);
     const name = (opts.name || "miner").slice(0, 16);
     this.pid.set(client.sessionId, playerId);
-    const coins = await db.ensurePlayer(playerId, name);
+    const prof = await db.ensurePlayer(playerId, name);
     const w = await db.getWallet(playerId);
     if (w) this.wallet.set(client.sessionId, w);
     const p = new PlayerState();
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
-    p.x = c.x; p.y = c.y; p.name = name; p.coins = coins; p.throughput = 1;
+    p.x = c.x; p.y = c.y;
+    p.name = prof.name; p.coins = prof.coins; p.skin = prof.skin; p.axe = prof.axe;
+    p.throughput = axeMult(prof.axe);
     this.state.players.set(client.sessionId, p);
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
   }
@@ -136,6 +141,23 @@ export class MineRoom extends Room<MineState> {
     if (p) p.name = name;
     await db.setName(this.pid.get(client.sessionId)!, name);
     client.send("nameSet", { name });
+  }
+
+  private onSetSkin(client: Client, m: { skin: number }): void {
+    const skin = Math.floor(m?.skin ?? 0);
+    if (skin < 0 || skin >= SKINS.length) return;
+    const p = this.state.players.get(client.sessionId);
+    if (p) p.skin = skin;
+    persist(db.setSkin(this.pid.get(client.sessionId)!, skin));
+  }
+
+  // NOTE: free equip for now (demo/preview); real axes are acquired on-chain (marketplace).
+  private onSetAxe(client: Client, m: { axe: number }): void {
+    const axe = Math.floor(m?.axe ?? 0);
+    if (axe < 0 || axe >= AXES.length) return;
+    const p = this.state.players.get(client.sessionId);
+    if (p) { p.axe = axe; p.throughput = axeMult(axe); }
+    persist(db.setAxe(this.pid.get(client.sessionId)!, axe));
   }
 
   private async sendHashrock(client: Client): Promise<void> {
