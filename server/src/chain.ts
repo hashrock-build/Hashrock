@@ -2,8 +2,8 @@
 // Redeem: treasury sends $HASHROCK to the player. Deposit: verify a player's SPL transfer
 // INTO the treasury from its tx signature. The server holds the treasury secret (MVP; a
 // multisig/program replaces this at mainnet per invariant #5).
-import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, transfer, getAssociatedTokenAddress, getAccount, createTransferInstruction } from "@solana/spl-token";
+import { Connection, Keypair, PublicKey, Transaction, ComputeBudgetProgram, TransactionInstruction } from "@solana/web3.js";
+import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddress, getAccount, createTransferInstruction } from "@solana/spl-token";
 import bs58 from "bs58";
 import fs from "fs";
 
@@ -51,7 +51,7 @@ export function blockhashValue(bh: string): number {
 
 export const treasuryAddress = (): string => treasury.publicKey.toBase58();
 export const mintAddress = (): string => mint.toBase58();
-export const explorer = (sig: string): string => `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+export const explorer = (sig: string): string => `https://solscan.io/tx/${sig}?cluster=devnet`;
 export function isValidAddress(s: string): boolean { try { new PublicKey(s); return true; } catch { return false; } }
 
 /** On-chain $HASHROCK balance of an address (0 if no token account yet). */
@@ -62,11 +62,36 @@ export async function tokenBalance(address: string): Promise<number> {
   } catch { return 0; }
 }
 
+/** Robust treasury-signed send: priority fee + manual getSignatureStatus polling with a BOUNDED
+ *  timeout that THROWS. We do NOT use sendAndConfirmTransaction / `transfer()` here — their
+ *  websocket signature-subscribe hangs forever on some RPCs (Helius), which made redeem "no
+ *  response". Throwing on timeout lets the caller refund instead of hanging. */
+async function treasurySend(instructions: TransactionInstruction[], timeoutMs = 45000): Promise<string> {
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("finalized");
+  const tx = new Transaction({ feePayer: treasury.publicKey, recentBlockhash: blockhash }).add(
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 300_000 }), // priority fee — devnet drops fee-less txs
+    ...instructions,
+  );
+  tx.sign(treasury);
+  const raw = tx.serialize();
+  const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 10 });
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true })).value;
+    if (st?.err) throw new Error("tx failed: " + JSON.stringify(st.err));
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig;
+    if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) throw new Error("blockhash expired before confirmation");
+    await conn.sendRawTransaction(raw, { skipPreflight: true }).catch(() => {}); // re-broadcast
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  throw new Error("confirmation timed out");
+}
+
 /** Send `amount` $HASHROCK from the treasury to `dest`. Returns the tx signature. */
 export async function redeemTo(dest: string, amount: number): Promise<string> {
   const destPk = new PublicKey(dest);
   const destAta = await getOrCreateAssociatedTokenAccount(conn, treasury, mint, destPk); // treasury pays rent if new
-  return transfer(conn, treasury, treasuryAta, destAta.address, treasury, amount);
+  return treasurySend([createTransferInstruction(treasuryAta, destAta.address, treasury.publicKey, amount)]);
 }
 
 /** Build an UNSIGNED $HASHROCK transfer (payer → treasury) for the client to sign with the

@@ -124,12 +124,16 @@ async function main(): Promise<void> {
   // ---- modal helpers ----
   const showModal = (id: string) => $(id).classList.add("show");
   const closeModal = (id: string) => $(id).classList.remove("show");
-  for (const id of ["profileModal", "redeemModal", "marketModal"]) {
+  for (const id of ["profileModal", "redeemModal", "marketModal", "redeemDoneModal"]) {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) closeModal(id); });
   }
   $("profileClose").addEventListener("click", () => closeModal("profileModal"));
   $("redeemClose").addEventListener("click", () => closeModal("redeemModal"));
   $("marketClose").addEventListener("click", () => closeModal("marketModal"));
+  $("redeemDoneClose").addEventListener("click", () => closeModal("redeemDoneModal"));
+  $("rdCopy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("rdSig").textContent ?? ""); toast("📋 tx hash copied"); } catch { toast("copy failed"); }
+  });
 
   // ---- cosmetic / axe pickers (rebuilt from authoritative state) ----
   const hex6 = (c: number) => "#" + (c >>> 0).toString(16).padStart(6, "0");
@@ -171,8 +175,15 @@ async function main(): Promise<void> {
   net.room.onMessage("hashrock", (m: { amount: number }) => { $("phashrock").textContent = fmt(m.amount); });
   net.room.onMessage("walletErr", (m: { msg: string }) => toast("⚠ " + m.msg));
   net.room.onMessage("nameSet", (m: { name: string }) => toast(`✅ username set: ${m.name}`));
-  net.room.onMessage("redeemOk", (m: { amount: number; url: string }) => { toast(`✅ redeemed ${fmt(m.amount)} $HASHROCK`); window.open(m.url, "_blank"); closeModal("redeemModal"); });
-  net.room.onMessage("redeemErr", (m: { msg: string }) => toast("⚠ redeem: " + m.msg));
+  net.room.onMessage("redeemOk", (m: { amount: number; sig: string; url: string }) => {
+    closeModal("redeemModal");
+    $("rdAmount").textContent = fmt(m.amount);
+    $("rdSig").textContent = m.sig;
+    ($("rdLink") as HTMLAnchorElement).href = m.url;
+    ($("redeemconfirm") as HTMLButtonElement).disabled = false;
+    showModal("redeemDoneModal");
+  });
+  net.room.onMessage("redeemErr", (m: { msg: string }) => { ($("redeemconfirm") as HTMLButtonElement).disabled = false; toast("⚠ redeem: " + m.msg); });
 
   // on-chain purchase (axe / color skin / repair): server builds tx → wallet signs+sends → server verifies + grants
   net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; skin?: number; price: number; tx: string }) => {
@@ -225,14 +236,22 @@ async function main(): Promise<void> {
     const name = ($("usernameinput") as HTMLInputElement).value.trim();
     if (name) net!.room.send("setName", { name });
   });
-  $("redeembtn").addEventListener("click", () => {
+  const openRedeem = () => {
+    if (!connected) return void toast("connect your wallet first");
     $("rcoins").textContent = fmt(world.coins);
     ($("redeemamount") as HTMLInputElement).value = "";
+    ($("redeemconfirm") as HTMLButtonElement).disabled = false;
     closeModal("profileModal"); showModal("redeemModal");
-  });
+  };
+  $("redeembtn").addEventListener("click", openRedeem);
+  $("redeemAction").addEventListener("click", openRedeem);
   $("redeemconfirm").addEventListener("click", () => {
     const amt = Math.floor(Number(($("redeemamount") as HTMLInputElement).value));
-    if (amt > 0) net!.room.send("redeem", { amount: amt });
+    if (amt <= 0) return void toast("enter a redeem amount");
+    if (amt > world.coins) return void toast("not enough coins");
+    ($("redeemconfirm") as HTMLButtonElement).disabled = true; // prevent double-submit during on-chain release
+    toast("releasing $HASHROCK on-chain… (up to ~45s)");
+    net!.room.send("redeem", { amount: amt });
   });
   $("disconnect").addEventListener("click", async () => {
     await disconnectPhantom();

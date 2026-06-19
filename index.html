@@ -134,6 +134,7 @@
     <button id="upgrade" class="ghost">⚒ Upgrade</button>
     <button id="marketplace" class="ghost">🛒 Marketplace</button>
     <button id="repair" class="ghost">🔧 Repair</button>
+    <button id="redeemAction">💱 Redeem</button>
     <button id="otc" class="ghost">🤝 OTC Market</button>
   </div>
 
@@ -191,6 +192,20 @@
       <div class="prow dim">→ sent to your connected wallet as $HASHROCK (1:1)</div>
       <input id="redeemamount" type="number" min="10" placeholder="amount (min 10)" />
       <button id="redeemconfirm" style="margin-top:6px">Confirm redeem</button>
+    </div>
+  </div>
+
+  <!-- redeem success popup -->
+  <div id="redeemDoneModal" class="modal">
+    <div class="panel card">
+      <button class="x" id="redeemDoneClose">×</button>
+      <div class="phead">✅ Redeem Successful</div>
+      <div class="prow" style="font-size:15px">released <b id="rdAmount">0</b> 💎 $HASHROCK</div>
+      <div class="prow dim">→ sent to your connected wallet (1:1)</div>
+      <div class="prow dim" style="margin-top:8px">transaction hash</div>
+      <div id="rdSig" class="mono" style="font-family:ui-monospace,monospace;font-size:10px;color:#9a92c0;word-break:break-all;background:#15122a;border:1px solid #34304e;border-radius:7px;padding:6px 8px;margin:2px 0">—</div>
+      <button id="rdCopy" class="ghost mini" style="margin-top:6px">📋 Copy tx hash</button>
+      <a id="rdLink" href="#" target="_blank" rel="noreferrer" style="text-decoration:none"><button style="margin-top:8px;width:100%">🔎 View on Solscan</button></a>
     </div>
   </div>
 
