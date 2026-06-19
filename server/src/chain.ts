@@ -17,8 +17,18 @@ const treasury = Keypair.fromSecretKey(
 let treasuryAta: PublicKey;
 
 export async function initChain(): Promise<void> {
-  const ata = await getOrCreateAssociatedTokenAccount(conn, treasury, mint, treasury.publicKey);
-  treasuryAta = ata.address;
+  // Derive the treasury ATA OFFLINE (no RPC) — it was already created during setup, so we
+  // don't need the network at boot. Best-effort confirm it on-chain with a few retries, but
+  // NEVER let a transient devnet 503 crash startup: gameplay must boot even if RPC is flaky.
+  treasuryAta = await getAssociatedTokenAddress(mint, treasury.publicKey);
+  for (let i = 0; i < 4; i++) {
+    try { const ata = await getOrCreateAssociatedTokenAccount(conn, treasury, mint, treasury.publicKey); treasuryAta = ata.address; return; }
+    catch (e) {
+      console.error(`[chain] treasury ATA check failed (try ${i + 1}/4):`, (e as Error).message);
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  console.warn("[chain] booting with derived treasury ATA (devnet RPC unavailable) — on-chain ops retry at call time");
 }
 
 // --- blockhash relayer: continuously cache the latest Solana blockhash; ore spawns

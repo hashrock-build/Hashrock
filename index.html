@@ -82,6 +82,7 @@
     .shop { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
     .shoprow { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border: 1px solid #34304e; border-radius: 9px; background: #1a1730; }
     .shoprow img { image-rendering: pixelated; height: 30px; }
+    .shoprow .swatch { width: 30px; height: 30px; border-radius: 7px; border: 1px solid rgba(255,255,255,.25); flex: 0 0 auto; }
     .shoprow .info { flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
     .shoprow .info span { font-size: 10px; }
     .shoprow button { padding: 5px 10px; }
@@ -176,6 +177,8 @@
       <div id="pvMarket" class="pvslot"></div>
       <div class="prow dim">axes — pay with $HASHROCK (95% pool · 5% creator)</div>
       <div id="shopaxes" class="shop"></div>
+      <div class="prow dim" style="margin-top:10px">color skins — tint your character (95% pool · 5% creator)</div>
+      <div id="shopskins" class="shop"></div>
     </div>
   </div>
 

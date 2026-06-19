@@ -5,7 +5,7 @@ import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
 import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
 import { CharacterPreview } from "./preview";
-import { SKINS, AXES, RARITY_COLOR, type Cosmetic } from "../shared/items";
+import { SKINS, AXES, RARITY_COLOR } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadCharacters } from "./player";
 import { loadProps } from "./props";
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
     $("dur").textContent = String(world.durability);
     $("pdur").textContent = String(world.durability);
     if ($("profileModal").classList.contains("show")) { buildPickers(); updatePreview(); }
-    if ($("marketModal").classList.contains("show")) updatePreview();
+    if ($("marketModal").classList.contains("show")) { buildShop(); buildSkins(); updatePreview(); }
   };
 
   // ---- live event feed (comment-style: newest at bottom, oldest rises off the top) ----
@@ -102,7 +102,23 @@ async function main(): Promise<void> {
       el.appendChild(row);
     });
   };
-  $("marketplace").addEventListener("click", () => { buildShop(); showModal("marketModal"); mountPreview("pvMarket"); });
+  const buildSkins = () => {
+    const el = $("shopskins"); el.innerHTML = "";
+    SKINS.filter((s) => (s.price ?? 0) > 0).forEach((s) => {
+      const owned = (world.skinsOwned & (1 << s.id)) !== 0;
+      const hex = "#" + (s.color >>> 0).toString(16).padStart(6, "0");
+      const row = document.createElement("div");
+      row.className = "shoprow";
+      row.innerHTML =
+        `<span class="swatch" style="background:${hex}"></span>` +
+        `<div class="info"><b>${s.name}</b><span class="dim">${s.rarity} · color skin</span></div>` +
+        `<button class="${owned ? "ghost" : ""} mini">${owned ? (world.skin === s.id ? "equipped" : "equip") : "buy " + fmt(s.price ?? 0)}</button>`;
+      row.querySelector("button")!.addEventListener("click", () =>
+        net!.room.send(owned ? "setSkin" : "buildSkinPurchase", { skin: s.id }));
+      el.appendChild(row);
+    });
+  };
+  $("marketplace").addEventListener("click", () => { buildShop(); buildSkins(); showModal("marketModal"); mountPreview("pvMarket"); });
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
 
   // ---- modal helpers ----
@@ -116,20 +132,7 @@ async function main(): Promise<void> {
   $("marketClose").addEventListener("click", () => closeModal("marketModal"));
 
   // ---- cosmetic / axe pickers (rebuilt from authoritative state) ----
-  const cosChip = (it: Cosmetic, sel: boolean, onpick: () => void): HTMLElement => {
-    const c = document.createElement("div");
-    c.className = "chip" + (sel ? " sel" : "");
-    c.style.borderColor = sel ? "#ffd23f" : RARITY_COLOR[it.rarity];
-    c.title = it.rarity;
-    const hex = "#" + (it.color >>> 0).toString(16).padStart(6, "0");
-    c.innerHTML = `<span class="dot" style="background:${it.color ? hex : "transparent"};border:1px solid #555"></span>${it.name}`;
-    c.onclick = onpick;
-    return c;
-  };
-  const fillCos = (elId: string, list: Cosmetic[], cur: number, msg: string, key: string) => {
-    const el = $(elId); el.innerHTML = "";
-    list.forEach((it) => el.appendChild(cosChip(it, cur === it.id, () => net!.room.send(msg, { [key]: it.id }))));
-  };
+  const hex6 = (c: number) => "#" + (c >>> 0).toString(16).padStart(6, "0");
   function buildPickers(): void {
     const cp = $("charpicker"); cp.innerHTML = "";
     CHARACTERS.forEach((name, i) => {
@@ -139,7 +142,19 @@ async function main(): Promise<void> {
       c.onclick = () => net!.room.send("setBody", { body: i });
       cp.appendChild(c);
     });
-    fillCos("skinpicker", SKINS, world.skin, "setSkin", "skin");
+    // color skins: owned → equip; locked → buy on-chain (🔒 price)
+    const sp = $("skinpicker"); sp.innerHTML = "";
+    SKINS.forEach((s) => {
+      const owned = (world.skinsOwned & (1 << s.id)) !== 0;
+      const sel = world.skin === s.id;
+      const c = document.createElement("div");
+      c.className = "chip" + (sel ? " sel" : "");
+      c.style.borderColor = sel ? "#ffd23f" : RARITY_COLOR[s.rarity];
+      c.title = owned ? s.rarity : `${s.rarity} — buy in marketplace`;
+      c.innerHTML = `<span class="dot" style="background:${hex6(s.color)};border:1px solid #555"></span>${s.name}${owned ? "" : ` 🔒${fmt(s.price ?? 0)}`}`;
+      c.onclick = () => net!.room.send(owned ? "setSkin" : "buildSkinPurchase", { skin: s.id });
+      sp.appendChild(c);
+    });
     const ap = $("axepicker"); ap.innerHTML = "";
     AXES.forEach((a) => {
       const owned = a.id <= world.axeOwned;
@@ -159,17 +174,19 @@ async function main(): Promise<void> {
   net.room.onMessage("redeemOk", (m: { amount: number; url: string }) => { toast(`✅ redeemed ${fmt(m.amount)} $HASHROCK`); window.open(m.url, "_blank"); closeModal("redeemModal"); });
   net.room.onMessage("redeemErr", (m: { msg: string }) => toast("⚠ redeem: " + m.msg));
 
-  // on-chain purchase (axe): server builds tx → wallet signs+sends → server verifies + grants
-  net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; price: number; tx: string }) => {
+  // on-chain purchase (axe / color skin / repair): server builds tx → wallet signs+sends → server verifies + grants
+  net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; skin?: number; price: number; tx: string }) => {
     try {
       toast("approve the payment in your wallet…");
       const sig = await signAndSend(m.tx);
       toast("verifying on-chain…");
       if (m.kind === "repair") net!.room.send("confirmRepair", { sig });
+      else if (m.kind === "skin") net!.room.send("confirmSkinPurchase", { skin: m.skin, sig });
       else net!.room.send("confirmAxePurchase", { axe: m.axe, sig });
     } catch (e) { toast("cancelled"); console.error(e); }
   });
-  net.room.onMessage("buyOk", (m: { axe: number; url: string }) => { toast(`✅ bought ${AXES[m.axe]?.name} axe`); window.open(m.url, "_blank"); buildPickers(); });
+  net.room.onMessage("buyOk", (m: { axe: number; url: string }) => { toast(`✅ bought ${AXES[m.axe]?.name} axe`); window.open(m.url, "_blank"); buildPickers(); buildShop(); });
+  net.room.onMessage("skinOk", (m: { skin: number; url: string }) => { toast(`✅ bought ${SKINS[m.skin]?.name} color skin`); window.open(m.url, "_blank"); buildPickers(); buildSkins(); updatePreview(); });
   net.room.onMessage("repairOk", (m: { url: string }) => { toast("✅ axe repaired (100%)"); window.open(m.url, "_blank"); });
   net.room.onMessage("buyErr", (m: { msg: string }) => toast("⚠ " + m.msg));
 

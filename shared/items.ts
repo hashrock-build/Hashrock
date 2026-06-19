@@ -2,7 +2,7 @@
 // (render + UI) agree. Cosmetics are PROCEDURAL (drawn in code), so they're original art
 // we hold full rights to and can sell on-chain later (Pixel Crawler art may NOT be sold —
 // see CLAUDE.md license). Outfit = body tint; hair + hat = drawn overlays on the head.
-export interface Cosmetic { id: number; name: string; rarity: Rarity; color: number; shape?: string; }
+export interface Cosmetic { id: number; name: string; rarity: Rarity; color: number; shape?: string; price?: number; }
 export interface Axe { id: number; name: string; color: string; mult: number; price: number; } // price in $HASHROCK (0 = free starter)
 export type Rarity = "Common" | "Rare" | "Epic" | "Legendary";
 
@@ -10,15 +10,18 @@ export const RARITY_COLOR: Record<Rarity, string> = {
   Common: "#9aa0a8", Rare: "#4aa3ff", Epic: "#b06bff", Legendary: "#ffb000",
 };
 
-// OUTFIT = body tint (kept as `skin` on the wire for back-compat)
+// OUTFIT = body tint (kept as `skin` on the wire for back-compat). Sold on-chain in the
+// marketplace as COLOR SKINS — they tint the whole character (body + the baked-in pickaxe).
+// Grey (id 0) is the free starter; the rest are bought with $HASHROCK (price in $HASHROCK).
 export const SKINS: Cosmetic[] = [
-  { id: 0, name: "Grey",    rarity: "Common",    color: 0xffffff },
-  { id: 1, name: "Crimson", rarity: "Common",    color: 0xff9a9a },
-  { id: 2, name: "Emerald", rarity: "Rare",      color: 0x9af5b0 },
-  { id: 3, name: "Azure",   rarity: "Rare",      color: 0x8fc8ff },
-  { id: 4, name: "Gold",    rarity: "Epic",      color: 0xffe08a },
-  { id: 5, name: "Shadow",  rarity: "Legendary", color: 0xb0a0e0 },
+  { id: 0, name: "Grey",    rarity: "Common",    color: 0xffffff, price: 0 },
+  { id: 1, name: "Crimson", rarity: "Common",    color: 0xff9a9a, price: 2_000 },
+  { id: 2, name: "Emerald", rarity: "Rare",      color: 0x9af5b0, price: 5_000 },
+  { id: 3, name: "Azure",   rarity: "Rare",      color: 0x8fc8ff, price: 8_000 },
+  { id: 4, name: "Gold",    rarity: "Epic",      color: 0xffe08a, price: 20_000 },
+  { id: 5, name: "Shadow",  rarity: "Legendary", color: 0xb0a0e0, price: 50_000 },
 ];
+export const skinPrice = (id: number): number => SKINS[id]?.price ?? 0;
 
 export const HAIRS: Cosmetic[] = [
   { id: 0, name: "None",   rarity: "Common",    color: 0x000000, shape: "none" },

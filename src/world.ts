@@ -131,6 +131,7 @@ export class World {
   get hat(): number { return this.state?.players?.get(this.room.sessionId)?.hat ?? 0; }
   get axe(): number { return this.state?.players?.get(this.room.sessionId)?.axe ?? 0; }
   get axeOwned(): number { return this.state?.players?.get(this.room.sessionId)?.axeOwned ?? 0; }
+  get skinsOwned(): number { return this.state?.players?.get(this.room.sessionId)?.skinsOwned ?? 1; }
   get body(): number { return this.state?.players?.get(this.room.sessionId)?.body ?? 0; }
   get durability(): number { return this.state?.players?.get(this.room.sessionId)?.durability ?? 100; }
   get pname(): string { return this.state?.players?.get(this.room.sessionId)?.name ?? ""; }

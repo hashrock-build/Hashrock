@@ -12,7 +12,7 @@ import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
 import * as chain from "../chain";
 import * as gen from "../../../shared/mapgen";
-import { SKINS, HAIRS, HATS, AXES, axeMult, axePrice } from "../../../shared/items";
+import { SKINS, HAIRS, HATS, AXES, axeMult, axePrice, skinPrice } from "../../../shared/items";
 
 const TILE = gen.TILE;
 const MAP_W = gen.MAP_W, MAP_H = gen.MAP_H;
@@ -79,6 +79,8 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("setAxe", (client, m: { axe: number }) => this.equip(client, "axe", m?.axe, AXES.length));
     this.onMessage("buildAxePurchase", (client, m: { axe: number }) => this.onBuildAxePurchase(client, m));
     this.onMessage("confirmAxePurchase", (client, m: { axe: number; sig: string }) => this.onConfirmAxePurchase(client, m));
+    this.onMessage("buildSkinPurchase", (client, m: { skin: number }) => this.onBuildSkinPurchase(client, m));
+    this.onMessage("confirmSkinPurchase", (client, m: { skin: number; sig: string }) => this.onConfirmSkinPurchase(client, m));
     this.onMessage("buildRepair", (client) => this.onBuildRepair(client));
     this.onMessage("confirmRepair", (client, m: { sig: string }) => this.onConfirmRepair(client, m));
     this.onMessage("getHashrock", (client) => this.sendHashrock(client));
@@ -103,6 +105,7 @@ export class MineRoom extends Room<MineState> {
     p.x = c.x; p.y = c.y;
     p.name = prof.name; p.coins = prof.coins;
     p.body = prof.body; p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axeOwned = prof.axeOwned;
+    p.skinsOwned = prof.skinsOwned;
     p.durability = prof.durability;
     p.throughput = axeMult(prof.axe);
     this.state.players.set(client.sessionId, p);
@@ -183,6 +186,7 @@ export class MineRoom extends Room<MineState> {
     const p = this.state.players.get(client.sessionId);
     if (!p || v < 0 || v >= len) return;
     if (slot === "axe" && v > p.axeOwned) { client.send("buyErr", { msg: "buy this axe first" }); return; }
+    if (slot === "skin" && !(p.skinsOwned & (1 << v))) { client.send("buyErr", { msg: "buy this color skin first" }); return; }
     p[slot] = v;
     if (slot === "axe") p.throughput = axeMult(v);
     persist(db.setSlot(this.pid.get(client.sessionId)!, slot, v));
@@ -221,6 +225,39 @@ export class MineRoom extends Room<MineState> {
       client.send("buyOk", { axe, sig, url: chain.explorer(sig) });
       this.sendHashrock(client);
     } catch (e) { client.send("buyErr", { msg: "purchase verify failed" }); console.error("[buy]", e); }
+  }
+
+  // On-chain COLOR-SKIN purchase. Step 1: build the $HASHROCK transfer for the wallet to sign.
+  private async onBuildSkinPurchase(client: Client, m: { skin: number }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const skin = Math.floor(m?.skin ?? 0);
+    if (!p) return;
+    if (!dest) return void client.send("buyErr", { msg: "connect your wallet first" });
+    if (skin <= 0 || skin >= SKINS.length) return void client.send("buyErr", { msg: "invalid skin" });
+    if (p.skinsOwned & (1 << skin)) return void client.send("buyErr", { msg: "already owned — just equip it" });
+    try {
+      const txb64 = await chain.buildPurchaseTx(dest, skinPrice(skin));
+      client.send("purchaseTx", { kind: "skin", skin, price: skinPrice(skin), tx: txb64 });
+    } catch (e) { client.send("buyErr", { msg: "need $HASHROCK in your wallet" }); console.error("[buyskin]", e); }
+  }
+  // Step 2: wallet paid → verify it hit the treasury, grant+equip the skin, route 95/5 (dedupe by sig).
+  private async onConfirmSkinPurchase(client: Client, m: { skin: number; sig: string }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const skin = Math.floor(m?.skin ?? 0), sig = (m?.sig ?? "").trim();
+    if (!p || !dest || !sig || skin <= 0 || skin >= SKINS.length) return void client.send("buyErr", { msg: "bad request" });
+    const price = skinPrice(skin);
+    try {
+      const dep = await chain.verifyDepositRetry(sig);
+      if (!dep || dep.amount < price || dep.source !== dest) return void client.send("buyErr", { msg: "payment not verified" });
+      const cut = Math.round(price * CREATOR_FEE);
+      if (!(await db.persistSkinBuy(this.pid.get(client.sessionId)!, skin, price, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
+      p.skinsOwned |= (1 << skin); p.skin = skin;
+      this.state.pool += price - cut; this.state.creator += cut; this.state.treasury += price;
+      client.send("skinOk", { skin, sig, url: chain.explorer(sig) });
+      this.sendHashrock(client);
+    } catch (e) { client.send("buyErr", { msg: "skin verify failed" }); console.error("[buyskin]", e); }
   }
 
   // On-chain repair (fixed cost): restore durability to 100, route 95% pool / 5% creator.
