@@ -121,7 +121,7 @@ async function main(): Promise<void> {
       const c = document.createElement("div");
       c.className = "chip" + (world.axe === a.id ? " sel" : "");
       const label = owned ? `${a.name} · ${a.mult}×` : `${a.name} · ${a.mult}× · buy ${fmt(a.price)}`;
-      c.innerHTML = `<span class="dot" style="background:${a.color}"></span>${label}`;
+      c.innerHTML = `<img src="/assets/axes/axe_${a.id}.png" alt="">${label}`;
       c.onclick = () => net!.room.send(owned ? "setAxe" : "buildAxePurchase", { axe: a.id });
       ap.appendChild(c);
     });
