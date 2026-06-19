@@ -12,7 +12,7 @@ import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
 import * as chain from "../chain";
 import * as gen from "../../../shared/mapgen";
-import { SKINS, HAIRS, HATS, AXES, axeMult } from "../../../shared/items";
+import { SKINS, HAIRS, HATS, AXES, axeMult, axePrice } from "../../../shared/items";
 
 const TILE = gen.TILE;
 const MAP_W = gen.MAP_W, MAP_H = gen.MAP_H;
@@ -73,6 +73,8 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("setHair", (client, m: { hair: number }) => this.equip(client, "hair", m?.hair, HAIRS.length));
     this.onMessage("setHat", (client, m: { hat: number }) => this.equip(client, "hat", m?.hat, HATS.length));
     this.onMessage("setAxe", (client, m: { axe: number }) => this.equip(client, "axe", m?.axe, AXES.length));
+    this.onMessage("buildAxePurchase", (client, m: { axe: number }) => this.onBuildAxePurchase(client, m));
+    this.onMessage("confirmAxePurchase", (client, m: { axe: number; sig: string }) => this.onConfirmAxePurchase(client, m));
     this.onMessage("getHashrock", (client) => this.sendHashrock(client));
     this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
@@ -94,7 +96,7 @@ export class MineRoom extends Room<MineState> {
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
     p.x = c.x; p.y = c.y;
     p.name = prof.name; p.coins = prof.coins;
-    p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe;
+    p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axeOwned = prof.axeOwned;
     p.throughput = axeMult(prof.axe);
     this.state.players.set(client.sessionId, p);
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
@@ -171,13 +173,47 @@ export class MineRoom extends Room<MineState> {
   // on-chain (marketplace) later. Cosmetics are visual; axe also sets throughput.
   private equip(client: Client, slot: "skin" | "hair" | "hat" | "axe", raw: number | undefined, len: number): void {
     const v = Math.floor(raw ?? 0);
-    if (v < 0 || v >= len) return;
     const p = this.state.players.get(client.sessionId);
-    if (p) {
-      p[slot] = v;
-      if (slot === "axe") p.throughput = axeMult(v);
-    }
+    if (!p || v < 0 || v >= len) return;
+    if (slot === "axe" && v > p.axeOwned) { client.send("buyErr", { msg: "buy this axe first" }); return; }
+    p[slot] = v;
+    if (slot === "axe") p.throughput = axeMult(v);
     persist(db.setSlot(this.pid.get(client.sessionId)!, slot, v));
+  }
+
+  // On-chain axe purchase. Step 1: build the $HASHROCK transfer for the wallet to sign.
+  private async onBuildAxePurchase(client: Client, m: { axe: number }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const axe = Math.floor(m?.axe ?? 0);
+    if (!p) return;
+    if (!dest) return void client.send("buyErr", { msg: "connect your wallet first" });
+    if (axe <= 0 || axe >= AXES.length) return void client.send("buyErr", { msg: "invalid axe" });
+    if (axe <= p.axeOwned) return void client.send("buyErr", { msg: "already owned — just equip it" });
+    try {
+      const txb64 = await chain.buildPurchaseTx(dest, axePrice(axe));
+      client.send("purchaseTx", { kind: "axe", axe, price: axePrice(axe), tx: txb64 });
+    } catch (e) { client.send("buyErr", { msg: "need $HASHROCK in your wallet" }); console.error("[buy]", e); }
+  }
+
+  // Step 2: the wallet signed+sent the payment → verify it hit the treasury, grant the axe,
+  // route 95% pool / 5% creator (dedupe by sig).
+  private async onConfirmAxePurchase(client: Client, m: { axe: number; sig: string }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const axe = Math.floor(m?.axe ?? 0), sig = (m?.sig ?? "").trim();
+    if (!p || !dest || !sig || axe <= 0 || axe >= AXES.length) return void client.send("buyErr", { msg: "bad request" });
+    const price = axePrice(axe);
+    try {
+      const dep = await chain.verifyDepositRetry(sig);
+      if (!dep || dep.amount < price || dep.source !== dest) return void client.send("buyErr", { msg: "payment not verified" });
+      const cut = Math.round(price * CREATOR_FEE);
+      if (!(await db.persistAxeBuy(this.pid.get(client.sessionId)!, axe, price, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
+      p.axe = axe; p.axeOwned = Math.max(p.axeOwned, axe); p.throughput = axeMult(axe);
+      this.state.pool += price - cut; this.state.creator += cut; this.state.treasury += price;
+      client.send("buyOk", { axe, sig, url: chain.explorer(sig) });
+      this.sendHashrock(client);
+    } catch (e) { client.send("buyErr", { msg: "purchase verify failed" }); console.error("[buy]", e); }
   }
 
   private async sendHashrock(client: Client): Promise<void> {

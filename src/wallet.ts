@@ -6,6 +6,7 @@ interface PhantomProvider {
   publicKey?: { toString(): string } | null;
   connect(opts?: { onlyIfTrusted?: boolean }): Promise<{ publicKey: { toString(): string } }>;
   disconnect(): Promise<void>;
+  signAndSendTransaction(tx: unknown): Promise<{ signature: string }>;
   on?(event: string, cb: (...a: unknown[]) => void): void;
 }
 

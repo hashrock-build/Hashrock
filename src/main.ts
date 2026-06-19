@@ -2,6 +2,7 @@ import { Application } from "pixi.js";
 import { World } from "./world";
 import { connect } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
+import { signAndSend } from "./purchase";
 import { SKINS, AXES, RARITY_COLOR, type Cosmetic } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadPlayerAnims } from "./player";
@@ -107,10 +108,12 @@ async function main(): Promise<void> {
     fillCos("skinpicker", SKINS, world.skin, "setSkin", "skin");
     const ap = $("axepicker"); ap.innerHTML = "";
     AXES.forEach((a) => {
+      const owned = a.id <= world.axeOwned;
       const c = document.createElement("div");
       c.className = "chip" + (world.axe === a.id ? " sel" : "");
-      c.innerHTML = `<span class="dot" style="background:${a.color}"></span>${a.name} · ${a.mult}×`;
-      c.onclick = () => net!.room.send("setAxe", { axe: a.id });
+      const label = owned ? `${a.name} · ${a.mult}×` : `${a.name} · ${a.mult}× · buy ${fmt(a.price)}`;
+      c.innerHTML = `<span class="dot" style="background:${a.color}"></span>${label}`;
+      c.onclick = () => net!.room.send(owned ? "setAxe" : "buildAxePurchase", { axe: a.id });
       ap.appendChild(c);
     });
   }
@@ -121,6 +124,18 @@ async function main(): Promise<void> {
   net.room.onMessage("nameSet", (m: { name: string }) => toast(`✅ username set: ${m.name}`));
   net.room.onMessage("redeemOk", (m: { amount: number; url: string }) => { toast(`✅ redeemed ${fmt(m.amount)} $HASHROCK`); window.open(m.url, "_blank"); closeModal("redeemModal"); });
   net.room.onMessage("redeemErr", (m: { msg: string }) => toast("⚠ redeem: " + m.msg));
+
+  // on-chain purchase (axe): server builds tx → wallet signs+sends → server verifies + grants
+  net.room.onMessage("purchaseTx", async (m: { axe: number; price: number; tx: string }) => {
+    try {
+      toast("approve the payment in your wallet…");
+      const sig = await signAndSend(m.tx);
+      toast("verifying purchase on-chain…");
+      net!.room.send("confirmAxePurchase", { axe: m.axe, sig });
+    } catch (e) { toast("purchase cancelled"); console.error(e); }
+  });
+  net.room.onMessage("buyOk", (m: { axe: number; url: string }) => { toast(`✅ bought ${AXES[m.axe]?.name} axe`); window.open(m.url, "_blank"); buildPickers(); });
+  net.room.onMessage("buyErr", (m: { msg: string }) => toast("⚠ " + m.msg));
 
   // ---- wallet button: Connect → (connected) Profile → opens popup ----
   const walletBtn = $("wallet") as HTMLButtonElement;

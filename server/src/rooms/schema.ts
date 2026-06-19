@@ -21,7 +21,8 @@ export class PlayerState extends Schema {
   @type("number") skin = 0;        // outfit/body tint id
   @type("number") hair = 0;        // hair cosmetic id
   @type("number") hat = 0;         // hat cosmetic id
-  @type("number") axe = 0;         // axe rarity id (drives throughput)
+  @type("number") axe = 0;         // equipped axe rarity id (drives throughput)
+  @type("number") axeOwned = 0;    // highest axe tier owned (bought on-chain)
 }
 
 export class MineState extends Schema {

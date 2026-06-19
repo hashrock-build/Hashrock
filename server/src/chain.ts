@@ -2,8 +2,8 @@
 // Redeem: treasury sends $HASHROCK to the player. Deposit: verify a player's SPL transfer
 // INTO the treasury from its tx signature. The server holds the treasury secret (MVP; a
 // multisig/program replaces this at mainnet per invariant #5).
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, transfer, getAssociatedTokenAddress, getAccount } from "@solana/spl-token";
+import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
+import { getOrCreateAssociatedTokenAccount, transfer, getAssociatedTokenAddress, getAccount, createTransferInstruction } from "@solana/spl-token";
 import bs58 from "bs58";
 import fs from "fs";
 
@@ -57,6 +57,27 @@ export async function redeemTo(dest: string, amount: number): Promise<string> {
   const destPk = new PublicKey(dest);
   const destAta = await getOrCreateAssociatedTokenAccount(conn, treasury, mint, destPk); // treasury pays rent if new
   return transfer(conn, treasury, treasuryAta, destAta.address, treasury, amount);
+}
+
+/** Build an UNSIGNED $HASHROCK transfer (payer → treasury) for the client to sign with the
+ *  wallet. Returns a base64 transaction. Used for on-chain purchases (axes, items). */
+export async function buildPurchaseTx(payer: string, amount: number): Promise<string> {
+  const payerPk = new PublicKey(payer);
+  const payerAta = await getAssociatedTokenAddress(mint, payerPk);
+  const tx = new Transaction().add(createTransferInstruction(payerAta, treasuryAta, payerPk, amount));
+  tx.feePayer = payerPk;
+  tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+  return tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+}
+
+/** verifyDeposit with retry, since a freshly-sent tx may not be confirmed yet. */
+export async function verifyDepositRetry(sig: string, tries = 6, delayMs = 2500): Promise<{ amount: number; source: string } | null> {
+  for (let i = 0; i < tries; i++) {
+    const r = await verifyDeposit(sig);
+    if (r) return r;
+    await new Promise((res) => setTimeout(res, delayMs));
+  }
+  return null;
 }
 
 /** Recent tx signatures touching the treasury token account (for the deposit watcher). */
