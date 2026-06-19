@@ -41,6 +41,9 @@ const poolPayout = (pool: number) =>
 const cellCenter = (gx: number, gy: number) => ({ x: gx * TILE + TILE / 2, y: gy * TILE + TILE / 2 });
 const persist = (p: Promise<unknown>) => p.catch((e) => console.error("[db]", e));
 
+// Live, lightweight stats for the landing page (read by the /stats HTTP route).
+export const liveStats = { online: 0, ore: 0 };
+
 export class MineRoom extends Room<MineState> {
   maxClients = 50;
   autoDispose = false; // single persistent world: ore keeps living across player connects
@@ -119,6 +122,7 @@ export class MineRoom extends Room<MineState> {
     p.durability = prof.durability;
     p.throughput = effAxeMult(prof.axe, axeLevel(prof.axeLevels, prof.axe));
     this.state.players.set(client.sessionId, p);
+    liveStats.online++;
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
   }
 
@@ -127,6 +131,7 @@ export class MineRoom extends Room<MineState> {
     this.pid.delete(client.sessionId);
     this.wallet.delete(client.sessionId);
     this.lastMoveAt.delete(client.sessionId);
+    liveStats.online = Math.max(0, liveStats.online - 1);
   }
 
   // --- intents (authoritative) ---
@@ -430,6 +435,7 @@ export class MineRoom extends Room<MineState> {
     ore.hp = ORE_HP; ore.maxHp = ORE_HP; ore.blockhash = blockhash;
     this.state.ores.set(String(ore.id), ore);
     this.oreOrder.push(ore.id);
+    liveStats.ore = this.state.ores.size;
     this.broadcast("ev", { k: "spawn", id: ore.id, hash: blockhash, gx: ore.gx, gy: ore.gy });
     if (this.oreOrder.length > this.state.cap) {
       const evicted = this.oreOrder.shift()!; // FIFO: its reward stays in the pool (invariant #7)

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpolygon points='8,1 3,6 8,15' fill='%238fe4f5'/%3E%3Cpolygon points='8,1 13,6 8,15' fill='%233aa6d8'/%3E%3C/svg%3E" />
   <title>HASHROCK</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
@@ -112,6 +115,105 @@
       background: radial-gradient(circle at 50% 76%, rgba(143,228,245,.18), transparent 64%); border-radius: 14px;
       box-shadow: inset 0 0 0 1px rgba(143,228,245,.14), inset 0 0 30px rgba(143,228,245,.06); }
     .pvslot canvas { image-rendering: pixelated; }
+
+    /* ===== Landing / start page ===== */
+    /* hide the in-game HUD until the player enters */
+    body:not(.playing) #left, body:not(.playing) #right, body:not(.playing) #center,
+    body:not(.playing) #actions, body:not(.playing) #feed, body:not(.playing) #tip { display: none !important; }
+    body.playing #landing { display: none; }
+
+    #landing { position: fixed; inset: 0; z-index: 50; overflow-y: auto; color: #ece9ff;
+      background: linear-gradient(rgba(8,6,18,.74), rgba(8,6,18,.92)), url('/landing-bg.png') center/cover fixed no-repeat; }
+    #landing::before { content: ""; position: fixed; inset: 0; pointer-events: none;
+      background: radial-gradient(1200px 500px at 50% -10%, rgba(143,228,245,.16), transparent 70%); }
+
+    .lhead { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 14px 22px; background: rgba(10,8,20,.55); backdrop-filter: blur(10px); border-bottom: 1px solid #241f3a; }
+    .lhead .logo { display: flex; align-items: center; gap: 9px; font-weight: 900; font-size: 20px; letter-spacing: 1px;
+      color: #fff; text-shadow: 0 0 14px rgba(143,228,245,.5); }
+    .lhead .logo svg { width: 26px; height: 26px; }
+    .lnav { display: flex; align-items: center; gap: 6px; }
+    .lnav a { color: #cfc8e8; text-decoration: none; font-size: 13px; font-weight: 600; padding: 7px 11px; border-radius: 8px; }
+    .lnav a:hover { background: rgba(143,228,245,.12); color: #fff; }
+    .lnav .xbtn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0;
+      border: 1px solid #34304e; border-radius: 9px; }
+    .lnav .xbtn svg { width: 15px; height: 15px; fill: #ece9ff; }
+
+    .hero { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: 90px 22px 40px; text-align: center; }
+    .hero h1 { font-size: clamp(52px, 11vw, 116px); font-weight: 900; letter-spacing: 4px; line-height: .95; margin-bottom: 14px;
+      background: linear-gradient(180deg, #ffffff, #8fe4f5 60%, #3aa6d8); -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; filter: drop-shadow(0 6px 24px rgba(58,166,216,.45)); }
+    .hero .tag { font-size: clamp(15px, 2.6vw, 20px); color: #cfe0ff; max-width: 620px; margin: 0 auto 10px; line-height: 1.5; }
+    .hero .sub { color: #9a92c0; font-size: 13px; max-width: 560px; margin: 0 auto 26px; }
+    .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero .cta button { font-size: 15px; padding: 13px 30px; border-radius: 12px; }
+    #playBtn { background: linear-gradient(180deg, #8fe4f5, #3aa6d8); color: #06222e;
+      box-shadow: 0 0 26px rgba(143,228,245,.5), inset 0 0 0 1px rgba(255,255,255,.35); }
+    #viewBtn { background: linear-gradient(180deg, #3c4a72, #28304c); color: #cfe0ff; box-shadow: inset 0 0 0 1px rgba(143,228,245,.2); }
+
+    .lstats { position: relative; z-index: 1; max-width: 880px; margin: 0 auto; padding: 8px 22px 30px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .lstat { background: linear-gradient(180deg, rgba(40,37,62,.7), rgba(17,15,28,.7)); border: 1px solid #2c2746; border-radius: 12px;
+      padding: 12px 10px; text-align: center; }
+    .lstat .v { font-size: 22px; font-weight: 800; color: #8fe4f5; font-variant-numeric: tabular-nums; }
+    .lstat .v.live::before { content: "● "; color: #8ef5a8; font-size: 12px; vertical-align: middle; }
+    .lstat .k { font-size: 11px; color: #9a92c0; margin-top: 2px; }
+    @media (max-width: 620px) { .lstats { grid-template-columns: repeat(2, 1fr); } .lnav a:not(.xbtn) { display: none; } }
+
+    .lca { position: relative; z-index: 1; max-width: 600px; margin: 0 auto 60px; padding: 0 22px;
+      display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .lca .box { display: flex; align-items: center; gap: 10px; background: rgba(20,18,30,.7); border: 1px solid #34304e;
+      border-radius: 11px; padding: 9px 14px; font-family: ui-monospace, monospace; font-size: 12px; max-width: 100%; }
+    .lca .box .lbl { color: #ffd23f; font-weight: 800; }
+    .lca .box .addr { color: #cfc8e8; overflow: hidden; text-overflow: ellipsis; }
+    .lca .box button { padding: 4px 9px; font-size: 11px; }
+    .lfoot { position: relative; z-index: 1; text-align: center; color: #6f688c; font-size: 11px; padding: 0 22px 30px; }
+
+    /* content sub-pages (How to play / Whitepaper / Docs) */
+    .page { position: fixed; inset: 0; z-index: 60; overflow-y: auto; display: none; color: #ece9ff;
+      background: linear-gradient(rgba(8,6,18,.86), rgba(8,6,18,.96)), url('/landing-bg2.png') center/cover fixed no-repeat; }
+    .page.show { display: block; }
+    .page .wrap { max-width: 760px; margin: 0 auto; padding: 26px 22px 80px; }
+    .page .pback { position: sticky; top: 14px; }
+    .page h2 { font-size: 34px; font-weight: 900; letter-spacing: 1px; margin: 10px 0 4px;
+      background: linear-gradient(180deg, #fff, #8fe4f5); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .page h3 { color: #ffd23f; font-size: 17px; margin: 26px 0 8px; border-bottom: 1px solid rgba(143,228,245,.2); padding-bottom: 5px; }
+    .page p, .page li { color: #d4cfe8; line-height: 1.65; font-size: 14px; }
+    .page ul, .page ol { padding-left: 22px; margin: 6px 0; }
+    .page li { margin: 5px 0; }
+    .page .lead { color: #cfe0ff; font-size: 16px; line-height: 1.6; }
+    .page b { color: #ffd23f; }
+    .page .card-mini { background: rgba(20,18,30,.6); border: 1px solid #2c2746; border-radius: 12px; padding: 14px 18px; margin: 12px 0; }
+    .page .road { list-style: none; padding: 0; }
+    .page .road li { padding: 8px 0 8px 30px; position: relative; border-bottom: 1px solid #221d38; }
+    .page .road li::before { position: absolute; left: 0; top: 8px; }
+    .page .road li.done::before { content: "✅"; } .page .road li.now::before { content: "🟦"; } .page .road li.next::before { content: "⬜"; }
+
+    /* ===== pixel / Crawler theme for the landing & content pages ===== */
+    #landing, .page { font-family: 'VT323', ui-monospace, monospace; -webkit-font-smoothing: none; image-rendering: pixelated; }
+    .lhead .logo { font-family: 'Press Start 2P', monospace; font-size: 15px; letter-spacing: 1px; color: #8fe4f5;
+      text-shadow: 2px 2px 0 #0c1830; }
+    .lnav a:not(.xbtn) { font-family: 'Press Start 2P', monospace; font-size: 9px; letter-spacing: .5px; }
+    #landingWallet, .hero .cta button { font-family: 'Press Start 2P', monospace; letter-spacing: .5px; }
+    #landingWallet { font-size: 9px; }
+    .hero .cta button { font-size: 12px; padding: 16px 26px; line-height: 1.5; }
+    .hero h1 { font-family: 'Press Start 2P', monospace; font-size: clamp(30px, 7.5vw, 70px); letter-spacing: 2px;
+      line-height: 1.1; -webkit-text-fill-color: #8fe4f5; background: none; color: #8fe4f5;
+      text-shadow: 4px 4px 0 #0c1830, 0 0 18px rgba(143,228,245,.5); filter: none; animation: pixelGlow 2.4s ease-in-out infinite; }
+    @keyframes pixelGlow { 0%,100% { text-shadow: 4px 4px 0 #0c1830, 0 0 12px rgba(143,228,245,.4); }
+      50% { text-shadow: 4px 4px 0 #0c1830, 0 0 26px rgba(143,228,245,.95), 0 0 40px rgba(58,166,216,.5); } }
+    .hero .tag { font-size: 24px; line-height: 1.35; color: #e6f6ff; }
+    .lstat .v { font-family: 'Press Start 2P', monospace; font-size: 15px; text-shadow: 2px 2px 0 #0c1830; }
+    .lstat .v.live::before { font-size: 14px; }
+    .lstat .k { font-size: 16px; line-height: 1.1; }
+    .lca .box { font-size: 16px; } .lca .box .lbl { font-family: 'Press Start 2P', monospace; font-size: 10px; }
+    .lca .box button, #caCopy { font-family: 'Press Start 2P', monospace; font-size: 9px; }
+    .page h2 { font-family: 'Press Start 2P', monospace; font-size: clamp(20px, 4vw, 30px); -webkit-text-fill-color: #8fe4f5;
+      background: none; color: #8fe4f5; text-shadow: 3px 3px 0 #0c1830; line-height: 1.3; }
+    .page h3 { font-family: 'Press Start 2P', monospace; font-size: 13px; color: #ffd23f; line-height: 1.4; }
+    .page p, .page li { font-size: 19px; line-height: 1.4; }
+    .page .lead { font-size: 22px; }
+    .pback { font-family: 'Press Start 2P', monospace; font-size: 9px; }
     /* upgrade stats comparison */
     .upstats { margin-top: 8px; }
     .upcols { display: flex; gap: 8px; align-items: stretch; }
@@ -126,6 +228,129 @@
   </style>
 </head>
 <body>
+  <!-- ===== Landing / start page ===== -->
+  <div id="landing">
+    <header class="lhead">
+      <div class="logo">
+        <svg viewBox="0 0 16 16"><polygon points="8,1 3,6 8,15" fill="#8fe4f5"/><polygon points="8,1 13,6 8,15" fill="#3aa6d8"/></svg>
+        HASHROCK
+      </div>
+      <nav class="lnav">
+        <a class="xbtn" id="navX" href="https://x.com/playhashrock" target="_blank" rel="noreferrer" title="Follow on X">
+          <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"/></svg>
+        </a>
+        <a href="#" data-page="howtoPage">How to Play</a>
+        <a href="#" data-page="whitepaperPage">Whitepaper</a>
+        <a href="#" data-page="docsPage">Docs</a>
+      </nav>
+      <button id="landingWallet" class="mini">🔗 Connect Wallet</button>
+    </header>
+
+    <section class="hero">
+      <h1>HASHROCK</h1>
+      <p class="tag">A top-down <b style="color:#8fe4f5">mine-to-earn</b> game on Solana. Ore spawns from the live <b style="color:#8fe4f5">blockhash</b> — mine it for coins, then redeem 1:1 for <b style="color:#8fe4f5">$HASHROCK</b>.</p>
+      <div class="cta">
+        <button id="playBtn">⛏ Play Now</button>
+      </div>
+    </section>
+
+    <section class="lstats">
+      <div class="lstat"><div class="v live" id="stOnline">0</div><div class="k">miners online</div></div>
+      <div class="lstat"><div class="v">1B</div><div class="k">$HASHROCK fixed supply</div></div>
+      <div class="lstat"><div class="v">1:1</div><div class="k">treasury-backed</div></div>
+      <div class="lstat"><div class="v">1/min</div><div class="k">blockhash ore</div></div>
+    </section>
+
+    <div class="lca">
+      <div class="box">
+        <span class="lbl">$HASHROCK CA</span>
+        <span class="addr" id="caAddr">coming soon</span>
+        <button class="ghost" id="caCopy">copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- How to Play -->
+  <div id="howtoPage" class="page">
+    <div class="wrap">
+      <button class="ghost mini pback" data-back>← Back</button>
+      <h2>How to Play</h2>
+      <p class="lead">Mine ore seeded by the Solana blockhash, earn in-game coins, then redeem them for $HASHROCK.</p>
+      <h3>1 · Enter</h3>
+      <p>Click <b>Play Now</b> on the start page. A wallet is optional to start — you only need <b>Phantom</b> or <b>Backpack</b> (on Devnet) when you want to buy, upgrade, or redeem.</p>
+      <h3>2 · Move &amp; mine</h3>
+      <ul>
+        <li><b>WASD</b> / arrow keys to walk around the village.</li>
+        <li>Stand next to blue <b>crystal ore</b> and press <b>Space</b> to mine. Moving cancels mining.</li>
+        <li>Ore spawns from the latest <b>blockhash</b> (≈1 per minute) and persists under a FIFO cap.</li>
+        <li>If several miners hit the same ore, the reward splits by <b>damage contributed</b>.</li>
+      </ul>
+      <h3>3 · Earn &amp; grow</h3>
+      <ul>
+        <li>Mining pays <b>in-game coins</b> from the reward pool.</li>
+        <li><b>Marketplace</b> — buy axe tiers (Wooden → Diamond) &amp; color skins with $HASHROCK.</li>
+        <li><b>Upgrade</b> — level each owned axe 1→10 for more mining throughput.</li>
+        <li><b>Repair</b> — restore axe durability.</li>
+      </ul>
+      <h3>4 · Redeem</h3>
+      <p>Open your <b>Profile</b> → <b>Request Redeem</b> to burn coins and release <b>$HASHROCK</b> 1:1 to your wallet.</p>
+    </div>
+  </div>
+
+  <!-- Whitepaper -->
+  <div id="whitepaperPage" class="page">
+    <div class="wrap">
+      <button class="ghost mini pback" data-back>← Back</button>
+      <h2>Whitepaper</h2>
+      <p class="lead">HASHROCK is built on one rule: <b>the treasury can never owe more than it holds.</b> Earning is redistribution, not emission.</p>
+      <h3>The token</h3>
+      <ul>
+        <li><b>$HASHROCK</b> — Solana SPL token, <b>fixed 1,000,000,000 supply</b>, decimals 0 (1 token = 1 coin).</li>
+        <li>Mint authority is <b>burned</b> — no one can ever print more.</li>
+        <li><b>100M (10%)</b> seeds the Reward Pool as the play-to-earn budget.</li>
+      </ul>
+      <h3>Solvency invariants</h3>
+      <ol>
+        <li>Coins are minted <b>only</b> when a $HASHROCK deposit is confirmed (1:1).</li>
+        <li><b>Mining does not mint</b> — rewards come from the Reward Pool, refilled by sinks.</li>
+        <li>Total coins in circulation <b>≡ treasury</b>, always 1:1 backed.</li>
+        <li>Redeeming <b>burns</b> coins, then releases tokens. Evicted ore recycles to the pool.</li>
+      </ol>
+      <h3>Sinks &amp; the fixed pie</h3>
+      <p>Upgrades, repairs, and marketplace buys are paid <b>on-chain in $HASHROCK</b> — never in mined coins. Of every sink, <b>95% recycles to the pool</b> (back to miners) and <b>5%</b> is the creator cut. Daily ore &amp; payout are fixed: upgrades shift your <b>share</b> of the pie, never grow emission.</p>
+      <div class="card-mini">Mining payout = a dynamic % of the current pool, so it self-balances — shrinking as the pool drains, growing as sinks refill it. It never hard-zeroes.</div>
+    </div>
+  </div>
+
+  <!-- Docs + Roadmap -->
+  <div id="docsPage" class="page">
+    <div class="wrap">
+      <button class="ghost mini pback" data-back>← Back</button>
+      <h2>Docs</h2>
+      <p class="lead">Built like infrastructure: a server-authoritative accounting system with a game on top.</p>
+      <h3>Stack</h3>
+      <ul>
+        <li><b>Client</b> — PixiJS v8 (top-down 2D), Vite + TypeScript.</li>
+        <li><b>Server</b> — Colyseus (authoritative) + Postgres with an append-only ledger auditing the 1:1 invariant.</li>
+        <li><b>Chain</b> — Solana ($HASHROCK SPL, treasury), on-chain for value only: transfers, sinks, deposit, redeem.</li>
+      </ul>
+      <h3>Security</h3>
+      <ul>
+        <li>Server validates movement, range &amp; every reward — the client is never trusted for economic values.</li>
+        <li>Redeem requires a server-verified signature; purchases verify the on-chain payment before granting.</li>
+        <li>World layout &amp; item stats stay off-chain (gas); only economic value lives on-chain.</li>
+      </ul>
+      <h3>Roadmap</h3>
+      <ul class="road">
+        <li class="done"><b>M1</b> — Top-down render, camera, 4-dir player, blockhash ore + FIFO.</li>
+        <li class="done"><b>M2</b> — 112×112 village, terrain/forest/houses, culled ground, Pixel Crawler art, economy v2.</li>
+        <li class="done"><b>M3</b> — Authoritative Colyseus server + Postgres; on-chain deposit/redeem; marketplace (axe tiers + color skins) &amp; per-tier axe leveling.</li>
+        <li class="now"><b>M4</b> — Live testnet, secondary player↔player marketplace, durability/repair depth, character preview polish.</li>
+        <li class="next"><b>M5</b> — Mainnet (treasury → multisig/program), themed mining biomes (cave / desert / forge / garden…).</li>
+      </ul>
+    </div>
+  </div>
+
   <div id="game"></div>
 
   <div id="left">

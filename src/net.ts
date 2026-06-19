@@ -21,3 +21,12 @@ export async function connect(name = "miner"): Promise<Net> {
   const $ = getStateCallbacks(room);
   return { room, $ };
 }
+
+/** Lightweight: live landing-page stats (miners online, active ore) via the server /stats route. */
+export async function roomStats(): Promise<{ online: number; ore: number; mint: string }> {
+  try {
+    const res = await fetch(`http://${location.hostname}:${SERVER_PORT}/stats`);
+    const j = await res.json();
+    return { online: Number(j.online) || 0, ore: Number(j.ore) || 0, mint: String(j.mint || "") };
+  } catch { return { online: 0, ore: 0, mint: "" }; }
+}

@@ -290,8 +290,10 @@ export class World {
   }
 
   // ---- intents ----
+  spectator = false; // View-only mode: can walk around but not mine/earn
+  setSpectator(v: boolean): void { this.spectator = v; }
   private requestMine(): void {
-    if (this.miningOreId != null) return;
+    if (this.spectator || this.miningOreId != null) return;
     const ore = this.nearestOre();
     if (ore) {
       this.miningOreId = ore.id;

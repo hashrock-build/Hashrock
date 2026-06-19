@@ -1,6 +1,6 @@
 import { Application } from "pixi.js";
 import { World } from "./world";
-import { connect } from "./net";
+import { connect, roomStats } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
 import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
@@ -20,7 +20,7 @@ function toast(msg: string): void {
   toastTimer = window.setTimeout(() => t.classList.remove("show"), 1800);
 }
 
-async function main(): Promise<void> {
+async function enterGame(viewOnly = false): Promise<void> {
   const app = new Application();
   await app.init({ background: "#3a5a2a", resizeTo: window, antialias: false });
   $("game").appendChild(app.canvas);
@@ -35,10 +35,21 @@ async function main(): Promise<void> {
   } catch (e) {
     toast("⚠ server offline — start: npm --prefix server run dev");
     console.error("[net] connect failed", e);
+    document.body.classList.remove("playing"); // back to landing
     return;
   }
 
   const world = new World(app, { groundTiles, crystals, playerAnims, props }, net.room, net.$);
+  world.setSpectator(viewOnly);
+  if (viewOnly) {
+    $("actions").style.display = "none";
+    const pill = document.createElement("div");
+    pill.id = "viewPill";
+    pill.style.cssText = "position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:40;display:flex;gap:8px;align-items:center;background:rgba(20,18,30,.9);border:1px solid #34304e;border-radius:11px;padding:7px 12px;font-size:12px;color:#cfe0ff";
+    pill.innerHTML = `👁 View only — explore the village. <button id="startPlaying" class="mini" style="margin-left:4px">⛏ Start Playing</button>`;
+    document.body.appendChild(pill);
+    $("startPlaying").addEventListener("click", () => { world.setSpectator(false); $("actions").style.display = ""; pill.remove(); toast("⛏ mining enabled — press Space near ore"); });
+  }
   if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
     (window as unknown as { world: World }).world = world;
 
@@ -322,4 +333,32 @@ async function main(): Promise<void> {
   connectPhantom(true).then((addr) => { if (addr) onConnected(addr); });
 }
 
-main();
+// ===== Landing / start page controller (shown first; game boots on Play/View) =====
+function initLanding(): void {
+  let started = false;
+  const start = (viewOnly: boolean) => {
+    if (started) return; started = true;
+    document.body.classList.add("playing");
+    enterGame(viewOnly);
+  };
+  $("playBtn").addEventListener("click", () => start(false));
+  $("landingWallet").addEventListener("click", () => start(false));
+
+  // sub-page nav (How to Play / Whitepaper / Docs)
+  document.querySelectorAll<HTMLElement>("[data-page]").forEach((a) =>
+    a.addEventListener("click", (e) => { e.preventDefault(); $(a.dataset.page!).classList.add("show"); }));
+  document.querySelectorAll<HTMLElement>("[data-back]").forEach((b) =>
+    b.addEventListener("click", () => (b.closest(".page") as HTMLElement)?.classList.remove("show")));
+
+  // copy CA
+  $("caCopy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("caAddr").textContent ?? ""); toast("📋 contract address copied"); } catch { toast("copy failed"); }
+  });
+
+  // live "miners online" (lightweight /stats; refresh every 10s). CA stays "coming soon" for now.
+  const refreshOnline = () => roomStats().then((s) => { $("stOnline").textContent = String(s.online); }).catch(() => {});
+  refreshOnline();
+  setInterval(refreshOnline, 10000);
+}
+
+initLanding();
