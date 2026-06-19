@@ -57,7 +57,6 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));
     this.onMessage("stopMine", (client) => { const p = this.state.players.get(client.sessionId); if (p) p.miningOreId = 0; });
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
-    this.onMessage("devSpawn", () => this.spawnOre()); // manual spawn button (dev/testing)
 
     this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);

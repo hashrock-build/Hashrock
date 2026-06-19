@@ -70,7 +70,6 @@ async function main(): Promise<void> {
     world.upgrade();
     toast("⚒ Upgraded (demo sink → 95% pool / 5% creator)");
   });
-  $("addspawn").addEventListener("click", () => net!.room.send("devSpawn"));
   $("marketplace").addEventListener("click", () => toast("🛒 Marketplace — coming in M3b/M4"));
   $("redeem").addEventListener("click", () => toast("💱 Redeem — coming in M3b (on-chain $HASHROCK)"));
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
