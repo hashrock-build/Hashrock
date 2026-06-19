@@ -46,8 +46,6 @@ async function main(): Promise<void> {
     $("count").textContent = `${world.oreCount}/${world.cap}`;
     $("pcoins").textContent = fmt(world.coins);
   };
-  world.onChange = render;
-  render();
 
   // ---- live event feed (comment-style: newest at bottom, oldest rises off the top) ----
   const logEl = $("feed");
@@ -64,6 +62,9 @@ async function main(): Promise<void> {
     else if (m.k === "mine") pushFeed("mine", `✅ mined #${m.id} (${m.gx},${m.gy})`);
     else if (m.k === "evict") pushFeed("evict", `✗ unmined #${m.id}`);
   });
+
+  world.onChange = render;
+  render();
 
   // ---- actions ----
   // Upgrade will branch into axe / character / speed later; for now it runs the demo sink.

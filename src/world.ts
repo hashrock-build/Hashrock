@@ -111,13 +111,15 @@ export class World {
   }
 
   // ---- HUD getters (read straight from authoritative state) ----
+  // NOTE: state maps (players/ores) can be momentarily undefined before the first sync
+  // patch — every accessor below is optional-chained so the first HUD render never throws.
   private get state(): any { return this.room.state; }
-  get coins(): number { return (this.state.players.get(this.room.sessionId) as NetPlayer | undefined)?.coins ?? 0; }
-  get pool(): number { return this.state.pool ?? 0; }
-  get creator(): number { return this.state.creator ?? 0; }
-  get treasury(): number { return this.state.treasury ?? 0; }
-  get oreCount(): number { return this.state.ores.size ?? 0; }
-  get cap(): number { return this.state.cap ?? 150; }
+  get coins(): number { return this.state?.players?.get(this.room.sessionId)?.coins ?? 0; }
+  get pool(): number { return this.state?.pool ?? 0; }
+  get creator(): number { return this.state?.creator ?? 0; }
+  get treasury(): number { return this.state?.treasury ?? 0; }
+  get oreCount(): number { return this.state?.ores?.size ?? 0; }
+  get cap(): number { return this.state?.cap ?? 150; }
 
   upgrade(): void { this.room.send("upgrade"); }
 
@@ -266,7 +268,7 @@ export class World {
   }
   private nearestOre(): NetOre | undefined {
     let best: NetOre | undefined, bestD = Infinity;
-    this.state.ores.forEach((o: NetOre) => {
+    this.state?.ores?.forEach((o: NetOre) => {
       const c = cellCenter(o.gx, o.gy);
       const d = Math.hypot(c.x - this.px, c.y - this.py);
       if (d < MINE_RANGE && d < bestD) { best = o; bestD = d; }
@@ -276,7 +278,7 @@ export class World {
 
   private setMiningBar(ore?: NetOre): void {
     if (!ore) { this.miningBar.visible = false; return; }
-    const me = this.state.players.get(this.room.sessionId) as NetPlayer | undefined;
+    const me = this.state?.players?.get(this.room.sessionId) as NetPlayer | undefined;
     const thr = me?.throughput ?? 1;
     const w = TILE, h = 5;
     const prog = 1 - Math.max(0, ore.hp) / ore.maxHp;
@@ -313,7 +315,7 @@ export class World {
     if (moving && this.miningOreId != null) { this.miningOreId = null; this.room.send("stopMine"); }
     let mineActive = false;
     if (this.miningOreId != null) {
-      const ore = this.state.ores.get(String(this.miningOreId)) as NetOre | undefined;
+      const ore = this.state?.ores?.get(String(this.miningOreId)) as NetOre | undefined;
       if (!ore) { this.miningOreId = null; }
       else {
         const c = cellCenter(ore.gx, ore.gy);
