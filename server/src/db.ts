@@ -41,6 +41,7 @@ export async function initSchema(seedPool: number): Promise<void> {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS hat INT NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS axe INT NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS axe_owned INT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS durability INT NOT NULL DEFAULT 100`);
   // seed economy: pool = seed, treasury backs it 1:1 (= seed), creator = 0
   await pool.query(
     `INSERT INTO economy (id, pool, creator, treasury) VALUES (1, $1, 0, $1)
@@ -99,13 +100,28 @@ export async function getEconomy(): Promise<Economy> {
   return { pool: n(rows[0].pool), creator: n(rows[0].creator), treasury: n(rows[0].treasury) };
 }
 
-export interface Profile { coins: number; body: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; name: string; }
+export interface Profile { coins: number; body: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; durability: number; name: string; }
 /** Create the player row if missing (without clobbering a saved username); returns profile. */
 export async function ensurePlayer(id: string, name: string): Promise<Profile> {
   await pool.query(`INSERT INTO players (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, name]);
-  const { rows } = await pool.query(`SELECT coins, body, skin, hair, hat, axe, axe_owned, name FROM players WHERE id = $1`, [id]);
+  const { rows } = await pool.query(`SELECT coins, body, skin, hair, hat, axe, axe_owned, durability, name FROM players WHERE id = $1`, [id]);
   const r = rows[0];
-  return { coins: n(r.coins), body: n(r.body), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axeOwned: n(r.axe_owned), name: r.name };
+  return { coins: n(r.coins), body: n(r.body), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axeOwned: n(r.axe_owned), durability: n(r.durability), name: r.name };
+}
+export async function setDurability(id: string, durability: number): Promise<void> {
+  await pool.query(`UPDATE players SET durability = $2 WHERE id = $1`, [id, durability]);
+}
+/** On-chain repair: $HASHROCK landed in treasury → restore durability + route 95% pool / 5% creator. */
+export async function persistRepair(playerId: string, cost: number, cut: number, sig: string): Promise<boolean> {
+  const dup = await pool.query(`SELECT 1 FROM ledger WHERE kind = 'repair' AND meta->>'sig' = $1 LIMIT 1`, [sig]);
+  if (dup.rowCount) return false;
+  await tx(async (c) => {
+    await c.query(`UPDATE players SET durability = 100 WHERE id = $1`, [playerId]);
+    await c.query(`UPDATE economy SET treasury = treasury + $1, pool = pool + $2, creator = creator + $3 WHERE id = 1`, [cost, cost - cut, cut]);
+    await c.query(`INSERT INTO ledger (kind, player_id, amount, pool_delta, creator_delta, treasury_delta, meta) VALUES ('repair', $1, 0, $2, $3, $4, $5)`,
+      [playerId, cost - cut, cut, cost, JSON.stringify({ sig })]);
+  });
+  return true;
 }
 
 /** On-chain axe purchase: $HASHROCK landed in treasury → grant axe + route 95% pool / 5% creator. */

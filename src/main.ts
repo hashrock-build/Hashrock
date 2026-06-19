@@ -49,6 +49,8 @@ async function main(): Promise<void> {
     $("treasury").textContent = fmt(world.treasury);
     $("count").textContent = `${world.oreCount}/${world.cap}`;
     $("pcoins").textContent = fmt(world.coins);
+    $("dur").textContent = String(world.durability);
+    $("pdur").textContent = String(world.durability);
     if ($("profileModal").classList.contains("show")) buildPickers();
   };
 
@@ -78,17 +80,33 @@ async function main(): Promise<void> {
     world.upgrade();
     toast("⚒ Upgraded (demo sink → 95% pool / 5% creator)");
   });
-  $("marketplace").addEventListener("click", () => toast("🛒 Marketplace — planned"));
+  const buildShop = () => {
+    const el = $("shopaxes"); el.innerHTML = "";
+    AXES.forEach((a) => {
+      const owned = a.id <= world.axeOwned;
+      const row = document.createElement("div");
+      row.className = "shoprow";
+      row.innerHTML =
+        `<img src="/assets/axes/axe_${a.id}.png" alt="">` +
+        `<div class="info"><b>${a.name}</b><span class="dim">${a.mult}× mining</span></div>` +
+        `<button class="${owned ? "ghost" : ""} mini">${owned ? (world.axe === a.id ? "equipped" : "equip") : "buy " + fmt(a.price)}</button>`;
+      row.querySelector("button")!.addEventListener("click", () =>
+        net!.room.send(owned ? "setAxe" : "buildAxePurchase", { axe: a.id }));
+      el.appendChild(row);
+    });
+  };
+  $("marketplace").addEventListener("click", () => { buildShop(); showModal("marketModal"); });
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
 
   // ---- modal helpers ----
   const showModal = (id: string) => $(id).classList.add("show");
   const closeModal = (id: string) => $(id).classList.remove("show");
-  for (const id of ["profileModal", "redeemModal"]) {
+  for (const id of ["profileModal", "redeemModal", "marketModal"]) {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) closeModal(id); });
   }
   $("profileClose").addEventListener("click", () => closeModal("profileModal"));
   $("redeemClose").addEventListener("click", () => closeModal("redeemModal"));
+  $("marketClose").addEventListener("click", () => closeModal("marketModal"));
 
   // ---- cosmetic / axe pickers (rebuilt from authoritative state) ----
   const cosChip = (it: Cosmetic, sel: boolean, onpick: () => void): HTMLElement => {
@@ -135,16 +153,23 @@ async function main(): Promise<void> {
   net.room.onMessage("redeemErr", (m: { msg: string }) => toast("⚠ redeem: " + m.msg));
 
   // on-chain purchase (axe): server builds tx → wallet signs+sends → server verifies + grants
-  net.room.onMessage("purchaseTx", async (m: { axe: number; price: number; tx: string }) => {
+  net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; price: number; tx: string }) => {
     try {
       toast("approve the payment in your wallet…");
       const sig = await signAndSend(m.tx);
-      toast("verifying purchase on-chain…");
-      net!.room.send("confirmAxePurchase", { axe: m.axe, sig });
-    } catch (e) { toast("purchase cancelled"); console.error(e); }
+      toast("verifying on-chain…");
+      if (m.kind === "repair") net!.room.send("confirmRepair", { sig });
+      else net!.room.send("confirmAxePurchase", { axe: m.axe, sig });
+    } catch (e) { toast("cancelled"); console.error(e); }
   });
   net.room.onMessage("buyOk", (m: { axe: number; url: string }) => { toast(`✅ bought ${AXES[m.axe]?.name} axe`); window.open(m.url, "_blank"); buildPickers(); });
+  net.room.onMessage("repairOk", (m: { url: string }) => { toast("✅ axe repaired (100%)"); window.open(m.url, "_blank"); });
   net.room.onMessage("buyErr", (m: { msg: string }) => toast("⚠ " + m.msg));
+
+  $("repair").addEventListener("click", () => {
+    if (world.durability >= 100) return void toast("axe already at full durability");
+    net!.room.send("buildRepair");
+  });
 
   // ---- wallet button: Connect → (connected) Profile → opens popup ----
   const walletBtn = $("wallet") as HTMLButtonElement;

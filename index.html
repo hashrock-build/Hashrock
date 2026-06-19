@@ -79,6 +79,18 @@
     .chip.sel { border-color: #ffd23f; box-shadow: inset 0 0 0 1px #ffd23f; }
     .chip .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .chip img { image-rendering: pixelated; height: 22px; width: auto; vertical-align: middle; margin-right: 1px; }
+    .shop { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+    .shoprow { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border: 1px solid #34304e; border-radius: 9px; background: #1a1730; }
+    .shoprow img { image-rendering: pixelated; height: 30px; }
+    .shoprow .info { flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+    .shoprow .info span { font-size: 10px; }
+    .shoprow button { padding: 5px 10px; }
+
+    /* card theming — crystal/mining vibe */
+    .card { border: 1px solid #3a4d7a; box-shadow: 0 0 0 1px rgba(143,228,245,.12), 0 10px 30px rgba(0,0,0,.45); }
+    .card .phead { color: #8fe4f5; font-size: 14px; letter-spacing: .3px; padding-bottom: 6px; margin-bottom: 6px;
+                   border-bottom: 1px solid #2b2a45; text-shadow: 0 1px 0 #0c1830; }
+    #profile.card, .modal .card { background: linear-gradient(180deg, rgba(26,24,38,.94), rgba(20,18,30,.94)); }
   </style>
 </head>
 <body>
@@ -95,11 +107,12 @@
     <button id="wallet">🔗 Connect Wallet</button>
   </div>
 
-  <div id="center" class="panel"><span class="clabel">⛏ coins mined</span> <b id="coins">0</b></div>
+  <div id="center" class="panel"><span class="clabel">⛏ coins</span> <b id="coins">0</b> <span class="clabel" style="margin-left:8px">🔧</span> <b id="dur">100</b><span class="clabel">%</span></div>
 
   <div id="actions">
     <button id="upgrade" class="ghost">⚒ Upgrade</button>
     <button id="marketplace" class="ghost">🛒 Marketplace</button>
+    <button id="repair" class="ghost">🔧 Repair</button>
     <button id="otc" class="ghost">🤝 OTC Market</button>
   </div>
 
@@ -118,6 +131,7 @@
 
       <div class="prow" style="margin-top:8px">🪙 coins <b id="pcoins">0</b></div>
       <div class="prow">💎 $HASHROCK <b id="phashrock">0</b></div>
+      <div class="prow">🔧 axe durability <b id="pdur">100</b>%</div>
       <div class="prow dim">wallet</div>
       <div id="pwallet" class="mono">—</div>
 
@@ -131,6 +145,16 @@
 
       <button id="redeembtn" style="margin-top:10px">💱 Request Redeem</button>
       <button id="disconnect" class="ghost mini">Disconnect</button>
+    </div>
+  </div>
+
+  <!-- marketplace popup -->
+  <div id="marketModal" class="modal">
+    <div class="panel card">
+      <button class="x" id="marketClose">×</button>
+      <div class="phead">🛒 Marketplace</div>
+      <div class="prow dim">axes — pay with $HASHROCK (95% pool · 5% creator)</div>
+      <div id="shopaxes" class="shop"></div>
     </div>
   </div>
 

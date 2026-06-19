@@ -24,6 +24,7 @@ export class PlayerState extends Schema {
   @type("number") hat = 0;         // hat cosmetic id
   @type("number") axe = 0;         // equipped axe rarity id (drives throughput)
   @type("number") axeOwned = 0;    // highest axe tier owned (bought on-chain)
+  @type("number") durability = 100; // axe durability; drops while mining, restored by repair
 }
 
 export class MineState extends Schema {

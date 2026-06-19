@@ -27,6 +27,9 @@ const BASE_MINE_TIME = Number(process.env.BASE_MINE_TIME_SEC ?? 30);
 const SPAWN_INTERVAL = Number(process.env.SPAWN_INTERVAL_SEC ?? 60) * 1000;
 const UPGRADE_COST = 5000; // DEMO sink (coins). Real upgrades = on-chain $HASHROCK (invariant #8).
 const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
+const DUR_PER_ORE = 2;     // axe durability lost per ore fully mined
+const DUR_PENALTY = 0.35;  // throughput multiplier when durability hits 0
+const REPAIR_COST = 3000;  // $HASHROCK to fully repair (sink → 95% pool / 5% creator)
 const REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY;
 const MINE_RANGE = TILE * 1.6;
 const MOVE_SPEED = 130; // px/s — server validates client moves against this (+ tolerance)
@@ -76,6 +79,8 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("setAxe", (client, m: { axe: number }) => this.equip(client, "axe", m?.axe, AXES.length));
     this.onMessage("buildAxePurchase", (client, m: { axe: number }) => this.onBuildAxePurchase(client, m));
     this.onMessage("confirmAxePurchase", (client, m: { axe: number; sig: string }) => this.onConfirmAxePurchase(client, m));
+    this.onMessage("buildRepair", (client) => this.onBuildRepair(client));
+    this.onMessage("confirmRepair", (client, m: { sig: string }) => this.onConfirmRepair(client, m));
     this.onMessage("getHashrock", (client) => this.sendHashrock(client));
     this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
@@ -98,6 +103,7 @@ export class MineRoom extends Room<MineState> {
     p.x = c.x; p.y = c.y;
     p.name = prof.name; p.coins = prof.coins;
     p.body = prof.body; p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axeOwned = prof.axeOwned;
+    p.durability = prof.durability;
     p.throughput = axeMult(prof.axe);
     this.state.players.set(client.sessionId, p);
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
@@ -217,6 +223,35 @@ export class MineRoom extends Room<MineState> {
     } catch (e) { client.send("buyErr", { msg: "purchase verify failed" }); console.error("[buy]", e); }
   }
 
+  // On-chain repair (fixed cost): restore durability to 100, route 95% pool / 5% creator.
+  private async onBuildRepair(client: Client): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    if (!p) return;
+    if (!dest) return void client.send("buyErr", { msg: "connect your wallet first" });
+    if (p.durability >= 100) return void client.send("buyErr", { msg: "axe already at full durability" });
+    try {
+      const txb64 = await chain.buildPurchaseTx(dest, REPAIR_COST);
+      client.send("purchaseTx", { kind: "repair", price: REPAIR_COST, tx: txb64 });
+    } catch (e) { client.send("buyErr", { msg: "need $HASHROCK in your wallet" }); console.error("[repair]", e); }
+  }
+  private async onConfirmRepair(client: Client, m: { sig: string }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId);
+    const sig = (m?.sig ?? "").trim();
+    if (!p || !dest || !sig) return void client.send("buyErr", { msg: "bad request" });
+    try {
+      const dep = await chain.verifyDepositRetry(sig);
+      if (!dep || dep.amount < REPAIR_COST || dep.source !== dest) return void client.send("buyErr", { msg: "payment not verified" });
+      const cut = Math.round(REPAIR_COST * CREATOR_FEE);
+      if (!(await db.persistRepair(this.pid.get(client.sessionId)!, REPAIR_COST, cut, sig))) return void client.send("buyErr", { msg: "already processed" });
+      p.durability = 100;
+      this.state.pool += REPAIR_COST - cut; this.state.creator += cut; this.state.treasury += REPAIR_COST;
+      client.send("repairOk", { sig, url: chain.explorer(sig) });
+      this.sendHashrock(client);
+    } catch (e) { client.send("buyErr", { msg: "repair verify failed" }); console.error("[repair]", e); }
+  }
+
   private async sendHashrock(client: Client): Promise<void> {
     const addr = this.wallet.get(client.sessionId);
     const amount = addr ? await chain.tokenBalance(addr) : 0;
@@ -321,7 +356,7 @@ export class MineRoom extends Room<MineState> {
       if (!ore) { p.miningOreId = 0; return; }
       const c = cellCenter(ore.gx, ore.gy);
       if (Math.hypot(c.x - p.x, c.y - p.y) >= MINE_RANGE) { p.miningOreId = 0; return; }
-      const dps = (ore.maxHp / BASE_MINE_TIME) * p.throughput;
+      const dps = (ore.maxHp / BASE_MINE_TIME) * p.throughput * (p.durability > 0 ? 1 : DUR_PENALTY);
       const dealt = Math.min(dps * dt, ore.hp);
       ore.hp -= dps * dt;
       let m = this.dmg.get(ore.id); if (!m) { m = new Map(); this.dmg.set(ore.id, m); }
@@ -337,12 +372,16 @@ export class MineRoom extends Room<MineState> {
     this.broadcast("ev", { k: "mine", id: ore.id, gx: ore.gx, gy: ore.gy });
     if (contrib) {
       for (const [sessionId, d] of contrib) {
+        const p = this.state.players.get(sessionId);
+        const playerId = this.pid.get(sessionId);
+        if (p && d > 0) { // mining wears the axe down
+          p.durability = Math.max(0, p.durability - DUR_PER_ORE);
+          if (playerId) persist(db.setDurability(playerId, p.durability));
+        }
         const reward = Math.min(this.state.pool, Math.round(payout * (d / ore.maxHp)));
         if (reward <= 0) continue;
         this.state.pool -= reward;
-        const p = this.state.players.get(sessionId);
         if (p) p.coins += reward;
-        const playerId = this.pid.get(sessionId);
         if (playerId) persist(db.persistReward(playerId, reward, ore.id)); // durable + audit
       }
     }

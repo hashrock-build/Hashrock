@@ -18,7 +18,7 @@ const MOVE_SEND_MS = 80;       // throttle position updates to the server
 const BASE_MINE_TIME = 30;     // for the local progress bar only (server is authoritative)
 
 interface NetOre { id: number; gx: number; gy: number; hp: number; maxHp: number; blockhash: string; }
-interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; body: number; }
+interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; body: number; durability: number; }
 
 export interface WorldAssets {
   groundTiles?: GroundTiles;
@@ -53,6 +53,7 @@ export class World {
   private miningBar!: Container;
   private miningBarG!: Graphics;
   private miningBarTxt!: Text;
+  private nameLabel!: Text; // local player's username, floating above the head
   private lastMoveSent = 0;
   private lastSentX = -1; private lastSentY = -1;
 
@@ -88,6 +89,10 @@ export class World {
     this.miningBarTxt.anchor.set(0.5, 1);
     this.miningBar.addChild(this.miningBarG, this.miningBarTxt);
     this.entities.addChild(this.miningBar);
+
+    this.nameLabel = new Text({ text: "", style: { fontFamily: "system-ui, sans-serif", fontSize: 11, fontWeight: "700", fill: "#ffffff", stroke: { color: "#1a1330", width: 3 } } });
+    this.nameLabel.anchor.set(0.5, 1);
+    this.entities.addChild(this.nameLabel);
 
     this.buildProps();
 
@@ -127,6 +132,7 @@ export class World {
   get axe(): number { return this.state?.players?.get(this.room.sessionId)?.axe ?? 0; }
   get axeOwned(): number { return this.state?.players?.get(this.room.sessionId)?.axeOwned ?? 0; }
   get body(): number { return this.state?.players?.get(this.room.sessionId)?.body ?? 0; }
+  get durability(): number { return this.state?.players?.get(this.room.sessionId)?.durability ?? 100; }
   get pname(): string { return this.state?.players?.get(this.room.sessionId)?.name ?? ""; }
 
   upgrade(): void { this.room.send("upgrade"); }
@@ -348,6 +354,10 @@ export class World {
     if (this.playerCtl) this.playerCtl.update(this.facing, moving, mineActive);
     else this.drawPlayer(this.playerNode as Graphics);
     this.playerNode.x = this.px; this.playerNode.y = this.py; this.playerNode.zIndex = this.py;
+    // username floating above the local player
+    const nm = this.pname;
+    if (this.nameLabel.text !== nm) this.nameLabel.text = nm;
+    this.nameLabel.x = this.px; this.nameLabel.y = this.py - TILE * 2.1; this.nameLabel.zIndex = this.py + 0.5;
 
     // throttled position send — ONLY while moving (a "move" msg cancels mining server-side,
     // so we must not send it while standing & mining). Resting pos is ~1 frame off, well
