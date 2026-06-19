@@ -26,10 +26,28 @@ async function main(): Promise<void> {
     (window as unknown as { world: World }).world = world; // dev inspector
 
   const countEl = document.getElementById("count")!;
+  const coinsEl = document.getElementById("coins")!;
+  const poolEl = document.getElementById("pool")!;
+  const treasuryEl = document.getElementById("treasury")!;
+  const creatorEl = document.getElementById("creator")!;
   const hashEl = document.getElementById("hash")!;
-  const render = () => { countEl.textContent = `${world.ores.length}/${world.cap}`; };
+  const upgradeBtn = document.getElementById("upgrade") as HTMLButtonElement;
+  const UPGRADE_COST = 5000; // demo sink amount (coins)
+  const fmt = (n: number) => n.toLocaleString("en-US");
+  const render = () => {
+    countEl.textContent = `${world.ores.length}/${world.cap}`;
+    coinsEl.textContent = fmt(world.coins);
+    poolEl.textContent = fmt(world.pool);
+    treasuryEl.textContent = fmt(world.treasury);
+    creatorEl.textContent = fmt(world.creator);
+    upgradeBtn.textContent = `⚒ Upgrade −${fmt(UPGRADE_COST)}`;
+    upgradeBtn.disabled = world.coins < UPGRADE_COST;
+  };
   world.onChange = render;
   render();
+
+  // Demo sink: spend coins on an upgrade → 95% back to pool, 5% to creator.
+  upgradeBtn.addEventListener("click", () => world.payUpgrade(UPGRADE_COST));
 
   const spawn = () => {
     const ore = world.spawnOre();

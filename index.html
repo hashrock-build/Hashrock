@@ -15,11 +15,15 @@
       padding: 9px 13px; font-size: 13px; backdrop-filter: blur(8px);
     }
     #hud b { font-variant-numeric: tabular-nums; color: #ffd23f; }
-    #spawn {
+    #hud .dim { color: #9a92c0; } #hud .dim b { color: #cda6f0; }
+    #hud .sep { width: 1px; align-self: stretch; background: #34304e; }
+    #hud button {
       cursor: pointer; border: none; border-radius: 9px; padding: 7px 13px; font-weight: 700; font-size: 12px;
       color: #1a1330; background: linear-gradient(180deg, #ffd676, #eaa520);
     }
-    #spawn:active { transform: translateY(1px); }
+    #hud button#upgrade { background: linear-gradient(180deg, #c9a6f5, #8a5fd0); color: #1a1330; }
+    #hud button:active { transform: translateY(1px); }
+    #hud button:disabled { opacity: .45; cursor: not-allowed; }
     #hash { font-family: ui-monospace, monospace; font-size: 11px; color: #9a92c0; }
     #tip {
       position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
@@ -33,6 +37,13 @@
   <div id="game"></div>
   <div id="hud">
     <button id="spawn">+ Block</button>
+    <button id="upgrade" title="Demo sink: 95% → pool, 5% → creator">⚒ Upgrade</button>
+    <span class="sep"></span>
+    <span title="Your in-game coins (backed 1:1 by $HASHROCK)">🪙 <b id="coins">0</b></span>
+    <span title="Reward Pool — funds mining payouts (95% of sinks)" class="dim">⛏ pool <b id="pool">0</b></span>
+    <span title="Treasury — $HASHROCK backing every coin 1:1" class="dim">🏦 treas <b id="treasury">0</b></span>
+    <span title="Creator revenue — 5% of sinks" class="dim">👑 creator <b id="creator">0</b></span>
+    <span class="sep"></span>
     <span>Ore: <b id="count">0/150</b></span>
     <span id="hash">—</span>
   </div>

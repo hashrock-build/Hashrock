@@ -20,19 +20,56 @@ pickaxe → **coins** → manual redeem → **$TOKEN**. The competition is about
 | Backend | Node/TS + DB + WebSocket |
 | Wallet | Phantom |
 
-## Economy (deposit-backed, solvent)
-Dual currency: **$TOKEN** (on-chain, FIXED supply) + **Coin** (off-chain, in-game).
+## Economy v2 (deposit-backed, solvent, on-chain sinks) — LOCKED
+Dual currency: **$HASHROCK** (on-chain SPL, FIXED **1B** supply) + **Coin** (off-chain, in-game).
 
-**Invariants (see CLAUDE.md for details):**
-- Coins are minted only on deposit (1:1). Mining does NOT mint coins.
-- `Total coins === Treasury $TOKEN × rate`. Always backed.
-- Mining rewards come from the **Reward Pool** (filled by sinks). Redeeming burns coins.
-- The server is authoritative; off-chain accounting is the primary attack surface.
+**Invariants (see CLAUDE.md):**
+- Coins are minted ONLY when $HASHROCK enters the Treasury (1:1). Mining does NOT mint.
+- `Total coins (player + pool + creator) === Treasury $HASHROCK × rate`. Always 1:1.
+- Mining = redistribution from the **Reward Pool**; redeeming burns coins; server authoritative.
+
+**Token allocation:** 1B fixed. **100M (10%)** seeds the Reward Pool = the play-to-earn
+budget (protocol-owned coins, backed by 100M Treasury — NOT player-deposit backing).
+
+### The two big design decisions
+1. **All sinks are ON-CHAIN, paid in $HASHROCK** (upgrade, repair, marketplace). You can
+   NOT pay sinks with mined coins. This (a) creates real demand/buy-pressure for the token,
+   (b) stops free-grinders from self-sustaining without injecting value (which would be
+   unfair to spenders & leak the loop), (c) makes earned coins' only exit = **redeem →
+   $HASHROCK**. Coins are just the off-chain accrual layer (fast mining, no gas/ore,
+   batched redeem, server-signed = anti-cheat). Solana's ~$0.0001 gas makes even frequent
+   repair on-chain viable.
+2. **Fixed pie.** Ore supply is fixed (1/min ⇒ 1440/day, FIFO cap 150) and total payout =
+   a % of the pool/day. Upgrades do NOT increase emission — they shift *share*. So upgrades
+   can never drain the protocol; aggressive upgrade pricing just funnels more $HASHROCK into
+   the pool. The only thing to police is per-player fairness (no instant arbitrage).
+
+### Reward payout (self-balancing, never 0)
+`payout/ore = REWARD_RATE × current_pool`, scaled by the player's share of the ore's HP.
+`REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY = 0.10 / 1440 ≈ 0.0069%`/ore. At a 100M pool
+≈ **6,944 coins/ore**; shrinks as the pool drains, recovers as sinks refill. FIFO-evicted
+ore keeps its reward in the pool (invariant #7).
+
+### Sink split & sustainability
+- **Sink split:** upgrade / repair / marketplace-fee → **95% Reward Pool**, **5% Creator**.
+  The 5% is the ONLY structural leak.
+- **Durability + repair (recurring sink, auto-scales with mining):** axes wear per hit;
+  repair (on-chain $HASHROCK) ≈ **30% of throughput** recycles into the pool. Higher tiers
+  wear faster + cost more to repair → **built-in anti-whale upkeep**. At dura 0: mining
+  power −70% (degrade, never hard-block).
+- **Cosmetics = the real sustainability engine (net inflow):** primary sales of skins /
+  accessories / limited characters bring fresh $HASHROCK. **Keep cosmetics decoupled from
+  earning power** (mostly visual; any boost small & bounded) or whales extract faster.
+  Suggested primary-sale split: **50% pool / 40% creator / 10% treasury-reserve**.
+- **Honest truth:** a P2E where *everyone* profits forever doesn't exist (5% leak + the
+  pie is fixed). Target a mix of net-spenders (play for fun/status) funding net-earners
+  (grinders). Repair recycles activity; cosmetics bring fresh value; `k%` auto-throttles so
+  it's always solvent.
 
 **Faucet → Sink:**
-| Faucet | Sink (→ pool) |
+| Faucet (coins in) | Sink (→ 95% pool / 5% creator) |
 |--------|---------------|
-| $TOKEN deposit | Redeem (burn), marketplace fee 5%, upgrades, repairs |
+| $HASHROCK deposit & on-chain sink payments (mint backed coins to pool) | Redeem (burn), repair, upgrade, marketplace fee 5%, cosmetics |
 
 ## Mining mechanic
 ```
@@ -51,10 +88,43 @@ hit_rate (/sec) = base_rate + char_speed_level
 move_speed      = base_move + char_speed_level
 ```
 
-## Progression
-- **Character (Lv 1–20):** Mining Power, Speed Level (attack speed + move speed), inventory.
-- **Pickaxe/Axe:** rarity (Pixel Crawler variants) + level (upgrade at the Anvil) → damage + durability.
-- **Marketplace:** tool trading, split 95% seller / 5% pool.
+## Progression & upgrade pricing (LOCKED — gap 6×, "payback faster per level")
+Three upgrade tracks, all **paid on-chain in $HASHROCK**, Lv 1→10. Design intent:
+**higher level ⇒ slightly faster payback** (drives the upgrade ladder), bounded so the
+**max-all veteran earns ≈ 6× a fresh free player** — spending clearly pays, free players
+keep ~1/6 share (viable to climb). 6× falls out of the throughput formula naturally:
+damage (axe+char, additive) → ~3× × speed → ~2× = **6×**.
+
+Pricing rule: benefit grows faster than cost ⇒ payback shrinks per level. Anchor: first
+upgrade = **30-day** payback. Costs denominated in **ore-equivalents** (auto-scale with the
+pool; re-peg to $HASHROCK periodically). `D` = base daily ore output (example `D = 40`).
+
+**1. Axe — damage/hit** (max 1.8×)
+| Lv→ | 1→2 | 5→6 | 9→10 | Total |
+|---|---|---|---|---|
+| ore-equiv | 81 | 95 | 111 | **~860** |
+| payback | 30d | 27d | 24d | — |
+
+**2. Char Speed — hit_rate + move_speed** (max 1.9× + travel QoL — best track to raise first)
+| Lv→ | 1→2 | 5→6 | 9→10 | Total |
+|---|---|---|---|---|
+| ore-equiv | 89 | 104 | 122 | **~940** |
+| payback | 30d | 26d | 23d | — |
+
+**3. Char Level — mining power + unlock** (max 1.75×; **gates axe & speed: both ≤ char level** = anti-whale)
+| Lv→ | 1→2 | 5→6 | 9→10 | Total |
+|---|---|---|---|---|
+| ore-equiv | 77 | 90 | 105 | **~810** |
+| payback | 30d | 27d | 25d | — |
+
+**Max all three ≈ 65 D (~2,610 ore-equiv) → 6× throughput.** Payback 30d → ~24d entry→top.
+Knob: ~8× gap = stronger whale pull (steeper payback); ~4× = more egalitarian. **6× = default.**
+
+- **Marketplace:** player-to-player tool/cosmetic trading. **Settlement on-chain in
+  $HASHROCK** (95% seller / 5% creator); **item data & listings off-chain** (in-game).
+  Only owned items are listable. Needs **escrow + atomic swap** so on-chain payment and
+  off-chain ownership transfer can't desync (server-authoritative + signature).
+- **Bootstrap:** start with a **free character + axe**; everything beyond is pay-to-earn.
 
 ## Deposit & Redeem
 ```
@@ -64,10 +134,14 @@ REDEEM  : MANUAL, accumulate freely. Min 10 $TOKEN. Server signs → contract re
 
 ## MVP parameters (defaults, tunable)
 ```yaml
-token:   { rate: 1000, min_redeem: 10, redeem_cooldown_sec: 0 }
-mining:  { map_size: 128, hash_digits: 4, interval_sec: 60, ore_hp: 100, ore_cap: 150,
-           reward_k: 0.005, reward_floor: 50 }
-sinks:   { marketplace_fee: 0.05 }
+token:   { supply: 1_000_000_000, pool_seed: 100_000_000, rate: 1, min_redeem: 10, redeem_cooldown_sec: 0 }
+mining:  { map_size: 112, hash_digits: 4, interval_sec: 60, ore_hp: 100, ore_cap: 150,
+           ore_per_day: 1440, daily_emission: 0.10, reward_k: 0.0000694, reward_floor: 1 }
+sinks:   { creator_fee: 0.05, pool_fee: 0.95, marketplace_fee: 0.05,
+           cosmetic_split: { pool: 0.50, creator: 0.40, treasury: 0.10 } }
+upgrade: { tracks: [axe, speed, char_level], levels: 10, max_gap: 6.0,
+           entry_payback_days: 30, char_gates_others: true }
+repair:  { onchain: true, recycle_pct: 0.30, dura_zero_penalty: 0.70 }
 ```
 
 ## MVP scope (Phase 1)
@@ -88,7 +162,8 @@ sinks:   { marketplace_fee: 0.05 }
 ## Roadmap
 ```
 ✅ M1 — Top-down render, camera follow, 4-direction player, blockhash ore + FIFO
-⬜ M2 — Mining animation, HUD (balance + ore tracker), local reward calc
+✅ M2 — Village, mining animation, HUD (coins/pool/treasury/creator + ore tracker),
+        local reward calc (k% pool), demo upgrade sink, Economy v2 locked
 ⬜ M3 — Authoritative WebSocket + contract deposit/redeem/treasury (testnet)
 ⬜ M4 — End-to-end Phantom, blockhash relayer 1/min, live testnet
 ```

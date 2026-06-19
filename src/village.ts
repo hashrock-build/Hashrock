@@ -13,8 +13,8 @@ import { cellHash, vnoise } from "./tiles";
 import { WorldProps, PropDef } from "./props";
 import { T_GRASS, T_DIRT, T_WATER } from "./ground";
 
-export const MAP_W = 100;
-export const MAP_H = 100;
+export const MAP_W = 112;
+export const MAP_H = 112;
 const FOREST_BAND = 15; // perimeter thickness that turns to forest
 
 export const idx = (gx: number, gy: number) => gy * MAP_W + gx;
@@ -32,13 +32,21 @@ export interface Village {
 
 const rand = (i: number) => cellHash(i * 131 + 7, i * 197 + 3);
 const edgeDist = (gx: number, gy: number) => Math.min(gx, gy, MAP_W - 1 - gx, MAP_H - 1 - gy);
-// >0 inside the forest ring (organic boundary via noise), 0 in the open interior
-const forestStrength = (gx: number, gy: number) =>
-  Math.max(0, (FOREST_BAND - edgeDist(gx, gy)) / FOREST_BAND + (vnoise(gx, gy, 9, 2) - 0.5) * 0.7);
+// >0 inside the forest ring, 0 in the open interior. Hard boundary at FOREST_BAND so
+// the forest NEVER leaks toward the centre; the noise only modulates density (dense
+// cores vs. open meadows) WITHIN the band, it does not extend the band inward.
+const forestStrength = (gx: number, gy: number) => {
+  const e = edgeDist(gx, gy);
+  if (e >= FOREST_BAND) return 0;
+  return Math.max(0, (FOREST_BAND - e) / FOREST_BAND + (vnoise(gx, gy, 9, 2) - 0.5) * 0.45);
+};
 
 export function buildVillage(P: WorldProps): Village {
   const terrain = new Uint8Array(MAP_W * MAP_H);
   const blocked = new Uint8Array(MAP_W * MAP_H);
+  // Ore-spawn exclusion mask. Separate from `blocked` (player collision): these cells
+  // stay walkable but ore must NEVER spawn here — forest, house property, farm, water.
+  const noOre = new Uint8Array(MAP_W * MAP_H);
   const props: Placed[] = [];
   const decor: Placed[] = [];
   const C = { x: MAP_W >> 1, y: MAP_H >> 1 };
@@ -52,6 +60,13 @@ export function buildVillage(P: WorldProps): Village {
   };
   const block = (gx: number, gy: number, w: number, h: number) => {
     for (let oy = 0; oy < h; oy++) for (let ox = 0; ox < w; ox++) blocked[idx(gx + ox, gy + oy)] = 1;
+  };
+  // mark a (clamped) rectangle as a no-ore-spawn zone — used for house yards & farms
+  const markNoOre = (gx: number, gy: number, w: number, h: number) => {
+    for (let oy = 0; oy < h; oy++) for (let ox = 0; ox < w; ox++) {
+      const cx = gx + ox, cy = gy + oy;
+      if (inB(cx, cy)) noOre[idx(cx, cy)] = 1;
+    }
   };
   const pickB = <T,>(l: T[], gx: number, gy: number, s = 0) => l[Math.floor(cellHash(gx + s, gy + s * 2) * l.length) % l.length];
 
@@ -94,6 +109,8 @@ export function buildVillage(P: WorldProps): Village {
   // place houses + ring them with flowers and decor (rule 1)
   houses.forEach((hs, hi) => {
     block(hs.gx, hs.gy, hs.w, hs.h);
+    // the whole house property (footprint + surrounding yard) is off-limits to ore
+    markNoOre(hs.gx - 2, hs.gy - 2, hs.w + 4, hs.h + 4);
     props.push({ gx: hs.gx, gy: hs.gy, def: pickB(P.houses, hs.gx, hs.gy, hi) });
     // surrounding ring cells
     for (let oy = -1; oy <= hs.h; oy++) for (let ox = -1; ox <= hs.w; ox++) {
@@ -113,6 +130,7 @@ export function buildVillage(P: WorldProps): Village {
     const h0 = houses[0]; const fw = 9, fh = 7;
     const fx = h0.gx + h0.w + 2, fy = h0.gy;
     if (free(fx, fy, fw, fh)) {
+      markNoOre(fx, fy, fw + 1, fh + 1); // the fenced farm plot is off-limits to ore
       for (let gy = fy; gy < fy + fh; gy++) for (let gx = fx; gx < fx + fw; gx++) if (terrain[idx(gx, gy)] !== T_WATER) terrain[idx(gx, gy)] = T_DIRT;
       const gate = fx + (fw >> 1);
       for (let gx = fx; gx < fx + fw; gx += 3) props.push({ gx, gy: fy, def: P.fenceH });
@@ -129,9 +147,12 @@ export function buildVillage(P: WorldProps): Village {
     const fsv = forestStrength(gx, gy);
     if (fsv <= 0 || terrain[idx(gx, gy)] !== T_GRASS || blocked[idx(gx, gy)]) continue;
     const h = cellHash(gx * 2 + 1, gy * 2 + 3);
-    if (h < Math.min(0.55, fsv * 0.6)) {
+    // Density has a FLOOR (0.28) so the whole band reads as solid forest on every side
+    // regardless of local noise — fixes the sparse "gap" the low-noise sides showed.
+    // fsv adds density toward the edge; only the innermost cell or two stay jagged.
+    if (h < Math.min(0.82, 0.28 + fsv * 0.8)) {
       props.push({ gx, gy, def: pickB(P.trees, gx, gy, 9) }); blocked[idx(gx, gy)] = 1;
-    } else if (h < fsv * 0.75) decor.push({ gx, gy, def: pickB(P.bushes, gx, gy, 5) });
+    } else if (h < Math.min(0.96, 0.5 + fsv)) decor.push({ gx, gy, def: pickB(P.bushes, gx, gy, 5) });
   }
 
   // ---- 7) sparse single trees in the open interior ----
@@ -164,7 +185,15 @@ export function buildVillage(P: WorldProps): Village {
     if (free(gx, gy)) { spawn = { gx, gy }; break; }
   }
 
+  // Ore-spawnable cells: walkable AND not water AND not in a no-ore zone (forest,
+  // house property, farm). Forest is excluded both via the noOre-adjacent check and a
+  // direct forestStrength test so even open meadow gaps inside the band are rejected.
   const freeCells: number[] = [];
-  for (let i = 0; i < blocked.length; i++) if (!blocked[i] && terrain[i] !== T_WATER) freeCells.push(i);
+  for (let gy = 0; gy < MAP_H; gy++) for (let gx = 0; gx < MAP_W; gx++) {
+    const i = idx(gx, gy);
+    if (blocked[i] || terrain[i] === T_WATER || noOre[i]) continue;
+    if (forestStrength(gx, gy) > 0) continue;
+    freeCells.push(i);
+  }
   return { terrain, blocked, freeCells, props, decor, spawn };
 }
