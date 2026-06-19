@@ -101,7 +101,10 @@ insolvent.
 ## Status & roadmap
 - ✅ **M1** — Top-down render, camera follow, 4-direction player, blockhash ore + FIFO, depth-by-Y
 - ✅ **M2** — 112×112 village (terrain grass/dirt/water, ponds, farms, houses, trees/rocks/bushes, culled ground + collision), hard-bounded forest ring, camera clamped to map bounds, Pixel Crawler art (tiles, animated player, mining swing, ore = diamond crystal-cluster that shrinks with HP), free-cell ore spawn with `noOre` exclusion (forest/house/farm/water), cap 150, HUD (coins/pool/treasury/creator + ore tracker), local reward calc (k% pool, payout proportional to damage), demo upgrade sink (95/5). **Economy v2 locked** (see MVP.md).
-- 🟦 **M3** *(current)* — Authoritative server + on-chain deposit/redeem. Stack: **Colyseus** (WS) + **Postgres** + treasury = **EOA** (no custom program for MVP; multisig/program at mainnet per invariant #5). `server/` scaffold + state schema + MineRoom (authoritative ore spawn/FIFO, time-based mining, multi-user damage-share reward, pool) BOOTS in-memory. Left: Postgres persistence + deposit/redeem (EOA), shared deterministic map-gen (server/client agree on ore cells), client wiring (render synced state + send intents), blockhash relayer.
+- 🟦 **M3** *(current)* — Authoritative server + on-chain deposit/redeem. Stack: **Colyseus** (WS) + **Postgres** + treasury = **EOA** (no custom program for MVP; multisig/program at mainnet per invariant #5).
+  - ✅ **3a DONE & PLAYABLE**: `server/` (Colyseus) authoritative ore spawn/FIFO, time-based mining, multi-user damage-share reward, pool. **Postgres** persistence + audit `ledger`, invariant 1:1 enforced (`db.ts`). **`shared/mapgen.ts`** = single map-truth (server freeCells == client render). **Client wired** (`net.ts` + networked `world.ts`): renders synced state, sends intents (move/mine/upgrade), renders other players, persistent `playerId` (localStorage). Verified end-to-end: real browser miner earned coins, persisted, invariant held.
+  - ⬜ **3b**: on-chain deposit/redeem via treasury EOA ($HASHROCK SPL on devnet), blockhash relayer (real Solana blockhash → ore), move/speed anti-cheat hardening.
+  - Run: `./server/scripts/pg.sh start` → `npm --prefix server run dev` → `npm run dev` (client).
 - ⬜ **M4** — End-to-end Phantom, blockhash relayer, live testnet
 
 ## Assets & license
