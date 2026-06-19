@@ -2,7 +2,7 @@
 // and sends intents (move / mine / upgrade). The server owns all economy + ore logic;
 // this file is a renderer + input layer. The map (ground/props/collision) is generated
 // locally from shared/mapgen.ts — identical to the server's, so ore lands on valid cells.
-import { Application, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Text, Texture, Assets } from "pixi.js";
 import type { Room } from "colyseus.js";
 import { TILE, cellCenter, facingFrom, Facing } from "./topdown";
 import { clusterForHp, CRYSTAL_W, GroundTiles } from "./tiles";
@@ -54,6 +54,9 @@ export class World {
   private miningBarG!: Graphics;
   private miningBarTxt!: Text;
   private nameLabel!: Text; // local player's username, floating above the head
+  private axeSprite!: Sprite; // equipped axe, shown in-hand while mining
+  private axeTexId = -1;
+  private axeSwing = 0;
   private lastMoveSent = 0;
   private lastSentX = -1; private lastSentY = -1;
 
@@ -93,6 +96,12 @@ export class World {
     this.nameLabel = new Text({ text: "", style: { fontFamily: "system-ui, sans-serif", fontSize: 11, fontWeight: "700", fill: "#ffffff", stroke: { color: "#1a1330", width: 3 } } });
     this.nameLabel.anchor.set(0.5, 1);
     this.entities.addChild(this.nameLabel);
+
+    this.axeSprite = new Sprite();
+    this.axeSprite.anchor.set(0.5, 0.92);
+    this.axeSprite.visible = false;
+    this.axeSprite.roundPixels = true;
+    this.entities.addChild(this.axeSprite);
 
     this.buildProps();
 
@@ -158,6 +167,8 @@ export class World {
         $(p).listen("skin", (v: number) => this.applySkin(v));
         this.playerCtl?.setBody(p.body);
         $(p).listen("body", (v: number) => { this.playerCtl?.setBody(v); this.applySkin(this.skin); this.onChange?.(); });
+        this.loadAxeTex(p.axe);
+        $(p).listen("axe", (v: number) => this.loadAxeTex(v));
       } else {
         this.addOther(sid, p);
         $(p).onChange(() => this.updateOther(sid, p));
@@ -213,6 +224,11 @@ export class World {
     if (!o) return;
     o.c.x = p.x; o.c.y = p.y; o.c.zIndex = p.y;
     if (p.skin !== o.skin) { o.body.tint = SKINS[p.skin]?.color ?? 0xffffff; o.skin = p.skin; }
+  }
+  private loadAxeTex(id: number): void {
+    if (id === this.axeTexId) return;
+    this.axeTexId = id;
+    Assets.load(`/assets/axes/axe_${id}.png`).then((t: Texture) => { if (this.axeSprite) this.axeSprite.texture = t; });
   }
   private applySkin(skinId: number): void {
     const tint = SKINS[skinId]?.color ?? 0xffffff;
@@ -358,6 +374,20 @@ export class World {
     const nm = this.pname;
     if (this.nameLabel.text !== nm) this.nameLabel.text = nm;
     this.nameLabel.x = this.px; this.nameLabel.y = this.py - TILE * 2.1; this.nameLabel.zIndex = this.py + 0.5;
+
+    // equipped axe in-hand, swinging, while mining
+    if (mineActive && this.axeTexId >= 0 && this.axeSprite.texture) {
+      const dir = this.facing === "left" ? -1 : 1;
+      this.axeSwing += this.app.ticker.deltaMS * 0.02;
+      this.axeSprite.visible = true;
+      this.axeSprite.x = this.px + dir * TILE * 0.42;
+      this.axeSprite.y = this.py - TILE * 0.5;
+      this.axeSprite.zIndex = this.py + 1;
+      this.axeSprite.scale.set(0.5); this.axeSprite.scale.x = 0.5 * dir;
+      this.axeSprite.angle = dir * (15 + Math.sin(this.axeSwing) * 40);
+    } else {
+      this.axeSprite.visible = false;
+    }
 
     // throttled position send — ONLY while moving (a "move" msg cancels mining server-side,
     // so we must not send it while standing & mining). Resting pos is ~1 frame off, well
