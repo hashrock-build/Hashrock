@@ -51,16 +51,18 @@ async function main(): Promise<void> {
 
   // ---- live event feed (comment-style: newest at bottom, oldest rises off the top) ----
   const logEl = $("feed");
-  let mined = 0, unmined = 0;
-  net.room.onMessage("ev", (m: { k: string; id?: number; hash?: string; gx?: number; gy?: number }) => {
-    let cls = "e", text = "";
-    if (m.k === "spawn") { cls = "spawn"; text = `⛏ ${(m.hash ?? "").slice(0, 6)}… → (${m.gx},${m.gy})`; }
-    else if (m.k === "mine") { cls = "mine"; text = `✅ mined #${m.id} (${m.gx},${m.gy})`; mined++; $("cmined").textContent = String(mined); }
-    else if (m.k === "evict") { cls = "evict"; text = `✗ unmined #${m.id}`; unmined++; $("cunmined").textContent = String(unmined); }
+  const pushFeed = (cls: string, text: string) => {
     const div = document.createElement("div");
     div.className = `e ${cls}`; div.textContent = text;
     logEl.appendChild(div);
     while (logEl.childElementCount > 6) logEl.removeChild(logEl.firstChild!);
+  };
+  pushFeed("e", "● connected — watching ore…"); // immediate proof the feed renders
+  net.room.onMessage("ev", (m: { k: string; id?: number; hash?: string; gx?: number; gy?: number }) => {
+    console.log("[ev]", m);
+    if (m.k === "spawn") pushFeed("spawn", `⛏ ${(m.hash ?? "").slice(0, 6)}… → (${m.gx},${m.gy})`);
+    else if (m.k === "mine") pushFeed("mine", `✅ mined #${m.id} (${m.gx},${m.gy})`);
+    else if (m.k === "evict") pushFeed("evict", `✗ unmined #${m.id}`);
   });
 
   // ---- actions ----
