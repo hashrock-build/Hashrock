@@ -1,13 +1,15 @@
 // Authoritative mining room. The server owns ore spawn (blockhash -> free cell), the
 // FIFO cap, mining validation (time-based DPS while in range & not moving), and the
-// reward pool. Clients only send intents (move / mine) and render the synced state.
+// reward pool. Clients only send intents (move / mine / upgrade) and render synced state.
 //
-// ⚠️ Economy is IN-MEMORY for now (state.pool). Postgres persistence + deposit/redeem
-// land next (blocked on the local Postgres install). Map free-cells are a PLACEHOLDER
-// central region until the shared deterministic map-gen is extracted (so server & client
-// agree on ore positions). Both are marked TODO below.
+// Economy is authoritative IN-MEMORY for responsiveness and mirrored to Postgres (db.ts)
+// for durability + audit (ledger). On boot the pool/treasury/creator load from the DB.
+//
+// ⚠️ Map free-cells are a PLACEHOLDER central region until the shared deterministic
+// map-gen is extracted (so server & client agree on ore positions). Marked TODO(map).
 import { Room, Client } from "colyseus";
 import { MineState, OreState, PlayerState } from "./schema";
+import * as db from "../db";
 
 const TILE = 32;
 const MAP_W = 112, MAP_H = 112;
@@ -17,58 +19,66 @@ const POOL_SEED = Number(process.env.POOL_SEED ?? 100_000_000);
 const DAILY_EMISSION = Number(process.env.DAILY_EMISSION ?? 0.1);
 const ORE_PER_DAY = Number(process.env.ORE_PER_DAY ?? 1440);
 const REWARD_FLOOR = Number(process.env.REWARD_FLOOR ?? 1);
+const CREATOR_FEE = Number(process.env.CREATOR_FEE ?? 0.05);
 const BASE_MINE_TIME = Number(process.env.BASE_MINE_TIME_SEC ?? 30);
 const SPAWN_INTERVAL = Number(process.env.SPAWN_INTERVAL_SEC ?? 60) * 1000;
+const UPGRADE_COST = 5000; // DEMO sink (coins). Real upgrades = on-chain $HASHROCK (invariant #8).
 const REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY;
 const MINE_RANGE = TILE * 1.6;
-const TICK_MS = 100; // mining simulation step
+const TICK_MS = 100;
 
 const poolPayout = (pool: number) =>
   Math.min(pool, Math.max(REWARD_FLOOR, Math.floor(pool * REWARD_RATE)));
-
 const cellCenter = (gx: number, gy: number) => ({ x: gx * TILE + TILE / 2, y: gy * TILE + TILE / 2 });
+const persist = (p: Promise<unknown>) => p.catch((e) => console.error("[db]", e));
 
 export class MineRoom extends Room<MineState> {
   maxClients = 50;
+  autoDispose = false; // single persistent world: ore keeps living across player connects
   private nextOreId = 1;
-  private oreOrder: number[] = []; // FIFO insertion order of ore ids
-  private freeCells: number[] = []; // PLACEHOLDER (see TODO)
-  // per-ore damage contribution: oreId -> (sessionId -> damage). Drives the multi-user split.
-  private dmg = new Map<number, Map<string, number>>();
+  private oreOrder: number[] = [];           // FIFO insertion order
+  private freeCells: number[] = [];          // TODO(map): real deterministic free-cell list
+  private pid = new Map<string, string>();   // sessionId -> persistent playerId
+  private dmg = new Map<number, Map<string, number>>(); // oreId -> (sessionId -> damage)
 
-  onCreate(): void {
+  async onCreate(): Promise<void> {
     this.setState(new MineState());
-    this.state.pool = POOL_SEED; // TODO(DB): load the live pool from Postgres
+    await db.initSchema(POOL_SEED);
+    const eco = await db.getEconomy();
+    this.state.pool = eco.pool;
+    this.state.creator = eco.creator;
+    this.state.treasury = eco.treasury;
     this.state.cap = ORE_CAP;
-    this.state.mapSeed = 0; // village is deterministic; client regenerates the same map
 
-    // TODO(map): replace with the shared deterministic free-cell list (terrain/blocked).
     for (let gy = 36; gy < 76; gy++) for (let gx = 36; gx < 76; gx++) this.freeCells.push(gy * MAP_W + gx);
 
     this.onMessage("move", (client, m: { x: number; y: number }) => this.onMove(client, m));
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));
     this.onMessage("stopMine", (client) => { const p = this.state.players.get(client.sessionId); if (p) p.miningOreId = 0; });
+    this.onMessage("upgrade", (client) => this.onUpgrade(client));
 
     this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
     this.spawnOre();
   }
 
-  onJoin(client: Client, opts: { name?: string } = {}): void {
+  async onJoin(client: Client, opts: { name?: string; playerId?: string } = {}): Promise<void> {
+    const playerId = (opts.playerId || client.sessionId).slice(0, 64);
+    const name = (opts.name || "miner").slice(0, 16);
+    this.pid.set(client.sessionId, playerId);
+    const coins = await db.ensurePlayer(playerId, name);
     const p = new PlayerState();
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
-    p.x = c.x; p.y = c.y;
-    p.name = (opts.name || "miner").slice(0, 16);
-    p.coins = 0;      // TODO(DB): load this player's balance from Postgres
-    p.throughput = 1; // TODO: derive from the player's upgrades
+    p.x = c.x; p.y = c.y; p.name = name; p.coins = coins; p.throughput = 1;
     this.state.players.set(client.sessionId, p);
   }
 
   onLeave(client: Client): void {
     this.state.players.delete(client.sessionId);
+    this.pid.delete(client.sessionId);
   }
 
-  // --- intents (authoritative validation) ---
+  // --- intents (authoritative) ---
   private onMove(client: Client, m: { x: number; y: number }): void {
     const p = this.state.players.get(client.sessionId);
     if (!p || typeof m?.x !== "number" || typeof m?.y !== "number") return;
@@ -86,6 +96,17 @@ export class MineRoom extends Room<MineState> {
     if (Math.hypot(c.x - p.x, c.y - p.y) < MINE_RANGE) p.miningOreId = ore.id;
   }
 
+  // DEMO sink (coins): 95% -> pool, 5% -> creator. Mirrors economy to the DB.
+  private onUpgrade(client: Client): void {
+    const p = this.state.players.get(client.sessionId);
+    if (!p || p.coins < UPGRADE_COST) return;
+    const cut = Math.round(UPGRADE_COST * CREATOR_FEE);
+    p.coins -= UPGRADE_COST;
+    this.state.creator += cut;
+    this.state.pool += UPGRADE_COST - cut;
+    persist(db.persistUpgrade(this.pid.get(client.sessionId)!, UPGRADE_COST, cut));
+  }
+
   // --- spawn (blockhash -> free cell) + FIFO ---
   private spawnOre(): void {
     if (!this.freeCells.length) return;
@@ -99,7 +120,7 @@ export class MineRoom extends Room<MineState> {
     this.state.ores.set(String(ore.id), ore);
     this.oreOrder.push(ore.id);
     if (this.oreOrder.length > this.state.cap) {
-      const evicted = this.oreOrder.shift()!; // FIFO: oldest out; its reward stays in the pool
+      const evicted = this.oreOrder.shift()!; // FIFO: its reward stays in the pool (invariant #7)
       this.state.ores.delete(String(evicted));
       this.dmg.delete(evicted);
     }
@@ -133,7 +154,9 @@ export class MineRoom extends Room<MineState> {
         if (reward <= 0) continue;
         this.state.pool -= reward;
         const p = this.state.players.get(sessionId);
-        if (p) p.coins += reward; // TODO(DB): persist balance + pool transactionally
+        if (p) p.coins += reward;
+        const playerId = this.pid.get(sessionId);
+        if (playerId) persist(db.persistReward(playerId, reward, ore.id)); // durable + audit
       }
     }
     this.dmg.delete(ore.id);

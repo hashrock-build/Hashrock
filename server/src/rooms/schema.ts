@@ -24,6 +24,8 @@ export class MineState extends Schema {
   @type({ map: OreState }) ores = new MapSchema<OreState>();
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type("number") pool = 0;        // Reward Pool (coins) — authoritative
+  @type("number") creator = 0;     // creator revenue (coins)
+  @type("number") treasury = 0;    // $HASHROCK backing all coins (1:1)
   @type("number") cap = 150;       // FIFO cap
   @type("number") mapSeed = 0;     // village seed; client regenerates the same map
 }
