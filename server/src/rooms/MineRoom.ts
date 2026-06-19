@@ -57,6 +57,7 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));
     this.onMessage("stopMine", (client) => { const p = this.state.players.get(client.sessionId); if (p) p.miningOreId = 0; });
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
+    this.onMessage("devSpawn", () => this.spawnOre()); // manual spawn button (dev/testing)
 
     this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
@@ -120,10 +121,12 @@ export class MineRoom extends Room<MineState> {
     ore.hp = ORE_HP; ore.maxHp = ORE_HP; ore.blockhash = blockhash;
     this.state.ores.set(String(ore.id), ore);
     this.oreOrder.push(ore.id);
+    this.broadcast("ev", { k: "spawn", id: ore.id, hash: blockhash, gx: ore.gx, gy: ore.gy });
     if (this.oreOrder.length > this.state.cap) {
       const evicted = this.oreOrder.shift()!; // FIFO: its reward stays in the pool (invariant #7)
       this.state.ores.delete(String(evicted));
       this.dmg.delete(evicted);
+      this.broadcast("ev", { k: "evict", id: evicted });
     }
   }
 
@@ -149,6 +152,7 @@ export class MineRoom extends Room<MineState> {
   private resolveOre(ore: OreState): void {
     const contrib = this.dmg.get(ore.id);
     const payout = poolPayout(this.state.pool);
+    this.broadcast("ev", { k: "mine", id: ore.id, gx: ore.gx, gy: ore.gy });
     if (contrib) {
       for (const [sessionId, d] of contrib) {
         const reward = Math.min(this.state.pool, Math.round(payout * (d / ore.maxHp)));
