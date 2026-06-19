@@ -1,6 +1,7 @@
 import { Application } from "pixi.js";
 import { World } from "./world";
 import { connect } from "./net";
+import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadPlayerAnims } from "./player";
 import { loadProps } from "./props";
@@ -102,17 +103,30 @@ async function main(): Promise<void> {
     if (sig?.trim()) net!.room.send("deposit", { sig: sig.trim() });
   });
 
-  // ---- wallet / profile (full Phantom signing lands in M4) ----
+  // ---- wallet / profile (Phantom) ----
   const walletBtn = $("wallet"), profile = $("profile");
-  walletBtn.addEventListener("click", () => {
+  const openProfile = (addr?: string) => {
     walletBtn.classList.add("hidden");
     profile.classList.remove("hidden");
+    if (addr) {
+      ($("walletinput") as HTMLInputElement).value = addr;
+      net!.room.send("setWallet", { address: addr }); // auto-save the connected wallet
+    }
     render();
+  };
+  walletBtn.addEventListener("click", async () => {
+    if (!getPhantom()) { toast("Phantom not found — paste your address manually"); openProfile(); return; }
+    const addr = await connectPhantom(false);
+    if (addr) { openProfile(addr); toast("✅ Phantom connected"); }
+    else toast("Phantom connection cancelled");
   });
-  $("disconnect").addEventListener("click", () => {
+  $("disconnect").addEventListener("click", async () => {
+    await disconnectPhantom();
     profile.classList.add("hidden");
     walletBtn.classList.remove("hidden");
   });
+  // auto-reconnect if the user already trusted this site
+  connectPhantom(true).then((addr) => { if (addr) openProfile(addr); });
 }
 
 main();
