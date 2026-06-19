@@ -69,6 +69,7 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
     this.onMessage("setWallet", (client, m: { address: string }) => this.onSetWallet(client, m));
     this.onMessage("setName", (client, m: { name: string }) => this.onSetName(client, m));
+    this.onMessage("setBody", (client, m: { body: number }) => this.equip(client, "body", m?.body, 2));
     this.onMessage("setSkin", (client, m: { skin: number }) => this.equip(client, "skin", m?.skin, SKINS.length));
     this.onMessage("setHair", (client, m: { hair: number }) => this.equip(client, "hair", m?.hair, HAIRS.length));
     this.onMessage("setHat", (client, m: { hat: number }) => this.equip(client, "hat", m?.hat, HATS.length));
@@ -96,7 +97,7 @@ export class MineRoom extends Room<MineState> {
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
     p.x = c.x; p.y = c.y;
     p.name = prof.name; p.coins = prof.coins;
-    p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axeOwned = prof.axeOwned;
+    p.body = prof.body; p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe; p.axeOwned = prof.axeOwned;
     p.throughput = axeMult(prof.axe);
     this.state.players.set(client.sessionId, p);
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
@@ -171,7 +172,7 @@ export class MineRoom extends Room<MineState> {
 
   // Equip a cosmetic/axe slot. NOTE: free for now (demo/preview); real items are bought
   // on-chain (marketplace) later. Cosmetics are visual; axe also sets throughput.
-  private equip(client: Client, slot: "skin" | "hair" | "hat" | "axe", raw: number | undefined, len: number): void {
+  private equip(client: Client, slot: "body" | "skin" | "hair" | "hat" | "axe", raw: number | undefined, len: number): void {
     const v = Math.floor(raw ?? 0);
     const p = this.state.players.get(client.sessionId);
     if (!p || v < 0 || v >= len) return;

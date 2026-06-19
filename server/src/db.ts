@@ -35,6 +35,7 @@ export async function initSchema(seedPool: number): Promise<void> {
     );
   `);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS wallet TEXT`); // Solana address for redeem
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS body INT NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS skin INT NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS hair INT NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS hat INT NOT NULL DEFAULT 0`);
@@ -98,13 +99,13 @@ export async function getEconomy(): Promise<Economy> {
   return { pool: n(rows[0].pool), creator: n(rows[0].creator), treasury: n(rows[0].treasury) };
 }
 
-export interface Profile { coins: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; name: string; }
+export interface Profile { coins: number; body: number; skin: number; hair: number; hat: number; axe: number; axeOwned: number; name: string; }
 /** Create the player row if missing (without clobbering a saved username); returns profile. */
 export async function ensurePlayer(id: string, name: string): Promise<Profile> {
   await pool.query(`INSERT INTO players (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, name]);
-  const { rows } = await pool.query(`SELECT coins, skin, hair, hat, axe, axe_owned, name FROM players WHERE id = $1`, [id]);
+  const { rows } = await pool.query(`SELECT coins, body, skin, hair, hat, axe, axe_owned, name FROM players WHERE id = $1`, [id]);
   const r = rows[0];
-  return { coins: n(r.coins), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axeOwned: n(r.axe_owned), name: r.name };
+  return { coins: n(r.coins), body: n(r.body), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), axeOwned: n(r.axe_owned), name: r.name };
 }
 
 /** On-chain axe purchase: $HASHROCK landed in treasury → grant axe + route 95% pool / 5% creator. */
@@ -120,7 +121,7 @@ export async function persistAxeBuy(playerId: string, axe: number, price: number
   return true;
 }
 /** Equip a cosmetic/axe slot. `slot` is a whitelisted column name. */
-export async function setSlot(id: string, slot: "skin" | "hair" | "hat" | "axe", value: number): Promise<void> {
+export async function setSlot(id: string, slot: "body" | "skin" | "hair" | "hat" | "axe", value: number): Promise<void> {
   await pool.query(`UPDATE players SET ${slot} = $2 WHERE id = $1`, [id, value]);
 }
 

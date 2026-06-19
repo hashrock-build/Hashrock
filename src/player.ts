@@ -29,22 +29,32 @@ async function loadStrip(url: string, count: number): Promise<Texture[]> {
   return frames;
 }
 
-async function loadAction(name: string, count: number): Promise<ActionSet> {
+async function loadAction(base: string, name: string, count: number): Promise<ActionSet> {
   const [down, side, up] = await Promise.all([
-    loadStrip(`/assets/character/${name}_Down-Sheet.png`, count),
-    loadStrip(`/assets/character/${name}_Side-Sheet.png`, count),
-    loadStrip(`/assets/character/${name}_Up-Sheet.png`, count),
+    loadStrip(`${base}/${name}_Down-Sheet.png`, count),
+    loadStrip(`${base}/${name}_Side-Sheet.png`, count),
+    loadStrip(`${base}/${name}_Up-Sheet.png`, count),
   ]);
   return { down, side, up };
 }
 
-export async function loadPlayerAnims(): Promise<PlayerAnims> {
+async function loadOne(base: string): Promise<PlayerAnims> {
   const [idle, walk, crush] = await Promise.all([
-    loadAction("Idle", 4),
-    loadAction("Walk", 6),
-    loadAction("Crush", 8),
+    loadAction(base, "Idle", 4),
+    loadAction(base, "Walk", 6),
+    loadAction(base, "Crush", 8), // Hunter's "Collect" was copied in as Crush (mining)
   ]);
   return { idle, walk, crush };
+}
+
+export const CHARACTERS = ["Rookie", "Hunter"]; // body index → name
+
+/** Load every selectable character body (same 4-direction format). */
+export async function loadCharacters(): Promise<PlayerAnims[]> {
+  return Promise.all([
+    loadOne("/assets/character"),         // Body_A (default)
+    loadOne("/assets/characters/hunter"), // A_Hunter
+  ]);
 }
 
 type State = "idle" | "walk" | "crush";
@@ -52,19 +62,30 @@ type State = "idle" | "walk" | "crush";
 export class Player {
   readonly sprite: AnimatedSprite;
   facing: Facing = "down";
-  private anims: PlayerAnims;
+  private chars: PlayerAnims[];
+  private body: number;
   private state: State = "idle";
   private baseScale: number;
 
-  constructor(anims: PlayerAnims, scale = 2) {
-    this.anims = anims;
+  constructor(chars: PlayerAnims[], scale = 2, body = 0) {
+    this.chars = chars;
+    this.body = Math.max(0, Math.min(body, chars.length - 1));
     this.baseScale = scale;
-    this.sprite = new AnimatedSprite(anims.idle.down);
+    this.sprite = new AnimatedSprite(this.anims.idle.down);
     this.sprite.anchor.set(0.5, FEET_ANCHOR_Y);
     this.sprite.roundPixels = true;
     this.sprite.animationSpeed = 0.12;
     this.sprite.play();
     this.apply();
+  }
+
+  private get anims(): PlayerAnims { return this.chars[this.body]; }
+
+  /** Switch character body (re-skins all animations). */
+  setBody(i: number): void {
+    if (i < 0 || i >= this.chars.length || i === this.body) return;
+    this.body = i;
+    this.apply(); // new body's frames differ → apply() swaps them
   }
 
   /** Drive the animation each frame from movement + mining. Priority: mine > walk > idle. */

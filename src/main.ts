@@ -3,9 +3,10 @@ import { World } from "./world";
 import { connect } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
 import { signAndSend } from "./purchase";
+import { CHARACTERS } from "./player";
 import { SKINS, AXES, RARITY_COLOR, type Cosmetic } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
-import { loadPlayerAnims } from "./player";
+import { loadCharacters } from "./player";
 import { loadProps } from "./props";
 
 const UPGRADE_COST = 5000; // mirror of server (DEMO sink)
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
   $("game").appendChild(app.canvas);
 
   const [groundTiles, crystals, playerAnims, props] = await Promise.all([
-    loadGroundTiles(), loadCrystalFrames(), loadPlayerAnims(), loadProps(),
+    loadGroundTiles(), loadCrystalFrames(), loadCharacters(), loadProps(),
   ]);
 
   let net;
@@ -105,6 +106,14 @@ async function main(): Promise<void> {
     list.forEach((it) => el.appendChild(cosChip(it, cur === it.id, () => net!.room.send(msg, { [key]: it.id }))));
   };
   function buildPickers(): void {
+    const cp = $("charpicker"); cp.innerHTML = "";
+    CHARACTERS.forEach((name, i) => {
+      const c = document.createElement("div");
+      c.className = "chip" + (world.body === i ? " sel" : "");
+      c.textContent = name;
+      c.onclick = () => net!.room.send("setBody", { body: i });
+      cp.appendChild(c);
+    });
     fillCos("skinpicker", SKINS, world.skin, "setSkin", "skin");
     const ap = $("axepicker"); ap.innerHTML = "";
     AXES.forEach((a) => {
