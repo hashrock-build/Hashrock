@@ -48,7 +48,8 @@ export class World {
   private cb: any; // getStateCallbacks proxy (loosely typed)
   private oreGfx = new Map<number, Container>();
   private oreBucket = new Map<number, number>();
-  private others = new Map<string, { c: Container; body: Graphics; skin: number }>();
+  private anims?: PlayerAnims[];
+  private others = new Map<string, { c: Container; ctl?: Player; fallback?: Graphics; skin: number; body: number; lx: number; ly: number; lastMove: number; mining: boolean }>();
   private miningOreId: number | null = null;
   private miningBar!: Container;
   private miningBarG!: Graphics;
@@ -98,6 +99,7 @@ export class World {
 
     const start = cellCenter(this.village.spawn.gx, this.village.spawn.gy);
     this.px = start.x; this.py = start.y;
+    this.anims = assets.playerAnims;
     if (assets.playerAnims) {
       this.playerCtl = new Player(assets.playerAnims, TILE / 16);
       this.playerNode = this.playerCtl.sprite;
@@ -199,23 +201,50 @@ export class World {
   // ---- other players (simple avatars, outfit-tinted) ----
   private addOther(sid: string, p: NetPlayer): void {
     const c = new Container();
-    const body = new Graphics();
-    body.ellipse(0, TILE * 0.42, TILE * 0.3, TILE * 0.15).fill({ color: 0x000000, alpha: 0.2 });
-    body.roundRect(-TILE * 0.26, -TILE * 0.42, TILE * 0.52, TILE * 0.66, 5).fill(0xc06b4a);
-    body.circle(0, -TILE * 0.42, TILE * 0.24).fill(0xf2c89a);
-    body.tint = SKINS[p.skin]?.color ?? 0xffffff;
-    const name = new Text({ text: p.name, style: { fontFamily: "system-ui, sans-serif", fontSize: 10, fill: "#fff", stroke: { color: "#1a1330", width: 3 } } });
-    name.anchor.set(0.5, 1); name.y = -TILE * 0.7;
-    c.addChild(body, name);
+    let ctl: Player | undefined;
+    let fallback: Graphics | undefined;
+    if (this.anims) {
+      ctl = new Player(this.anims, TILE / 16, p.body);
+      ctl.update("down", false, false);
+      ctl.sprite.tint = SKINS[p.skin]?.color ?? 0xffffff;
+      c.addChild(ctl.sprite);
+    } else {
+      fallback = new Graphics();
+      fallback.roundRect(-TILE * 0.26, -TILE * 0.42, TILE * 0.52, TILE * 0.66, 5).fill(0xc06b4a);
+      fallback.tint = SKINS[p.skin]?.color ?? 0xffffff;
+      c.addChild(fallback);
+    }
+    const name = new Text({ text: p.name, style: { fontFamily: "system-ui, sans-serif", fontSize: 11, fontWeight: "700", fill: "#fff", stroke: { color: "#1a1330", width: 3 } } });
+    name.anchor.set(0.5, 1); name.y = -TILE * 1.4;
+    c.addChild(name);
     c.x = p.x; c.y = p.y; c.zIndex = p.y;
     this.entities.addChild(c);
-    this.others.set(sid, { c, body, skin: p.skin });
+    this.others.set(sid, { c, ctl, fallback, skin: p.skin, body: p.body, lx: p.x, ly: p.y, lastMove: 0, mining: false });
   }
   private updateOther(sid: string, p: NetPlayer): void {
     const o = this.others.get(sid);
     if (!o) return;
+    const dx = p.x - o.lx, dy = p.y - o.ly;
     o.c.x = p.x; o.c.y = p.y; o.c.zIndex = p.y;
-    if (p.skin !== o.skin) { o.body.tint = SKINS[p.skin]?.color ?? 0xffffff; o.skin = p.skin; }
+    o.mining = p.miningOreId > 0;
+    if (p.skin !== o.skin) { const t = SKINS[p.skin]?.color ?? 0xffffff; if (o.ctl) o.ctl.sprite.tint = t; else if (o.fallback) o.fallback.tint = t; o.skin = p.skin; }
+    if (o.ctl) {
+      if (p.body !== o.body) { o.ctl.setBody(p.body); o.ctl.sprite.tint = SKINS[p.skin]?.color ?? 0xffffff; o.body = p.body; }
+      const moving = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
+      if (moving) {
+        o.lastMove = performance.now();
+        const facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? "left" : "right") : (dy < 0 ? "up" : "down");
+        o.ctl.update(facing, true, o.mining);
+      } else {
+        o.ctl.update(o.ctl.facing, false, o.mining);
+      }
+    }
+    o.lx = p.x; o.ly = p.y;
+  }
+  // Per-frame: stop the walk animation of other players who haven't sent a position recently.
+  private decayOthers(): void {
+    const now = performance.now();
+    this.others.forEach((o) => { if (o.ctl && now - o.lastMove > 180) o.ctl.update(o.ctl.facing, false, o.mining); });
   }
   private applySkin(skinId: number): void {
     const tint = SKINS[skinId]?.color ?? 0xffffff;
@@ -365,6 +394,7 @@ export class World {
     if (this.playerCtl) this.playerCtl.update(this.facing, moving, mineActive);
     else this.drawPlayer(this.playerNode as Graphics);
     this.playerNode.x = this.px; this.playerNode.y = this.py; this.playerNode.zIndex = this.py;
+    this.decayOthers(); // settle other players to idle when they stop sending positions
     // username floating above the local player
     const nm = this.pname;
     if (this.nameLabel.text !== nm) this.nameLabel.text = nm;
