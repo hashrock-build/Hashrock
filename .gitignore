@@ -1,0 +1,5 @@
+node_modules
+dist
+
+# Source archives (already extracted into the repo)
+*.zip

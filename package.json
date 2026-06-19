@@ -1,0 +1,19 @@
+{
+  "name": "mining-game-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Top-down 2D mine-to-earn starter (PixiJS v8 + Vite + TS). Blockhash ore spawn, FIFO cap, 4-dir movement, camera follow, depth sort by-y.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "pixi.js": "^8.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}
