@@ -1,21 +1,27 @@
-// Timing for the ≤20s intro. Source gameplay is 43.37s; at 3× it shows in ~14.5s.
+// Cinematic ~20s announce intro: title build → gameplay with kinetic callouts → stats → CTA.
 export const FPS = 30;
 export const WIDTH = 1920;
 export const HEIGHT = 1080;
 
-export const SPEED = 3; // gameplay speed-up
+// gameplay source is 43.37s; shown sped up inside the showcase scene
 export const SRC_DURATION_S = 43.37;
+export const GAMEPLAY_SPEED = 3.6;
 
-export const INTRO = 75; // 2.5s title card
-export const OUTRO = 75; // 2.5s outro card
-export const GAMEPLAY = Math.ceil((SRC_DURATION_S / SPEED) * FPS); // ~434 frames (14.5s)
-export const TOTAL = INTRO + GAMEPLAY + OUTRO; // ~584 frames ≈ 19.5s
+// scene lengths (frames). TransitionSeries overlaps subtract the transition durations.
+export const S_TITLE = 78;
+export const S_GAME = 345;
+export const S_STATS = 120;
+export const S_CTA = 123;
+export const XFADE = 22; // transition overlap
 
-// theme (matches the game / landing)
+// theme (matches game / landing)
 export const C = {
-  bg: "#0a0613",
+  bg: "#070512",
+  bg2: "#10193a",
   cyan: "#8fe4f5",
   blue: "#3aa6d8",
   gold: "#ffd23f",
-  ink: "#0c1830",
+  green: "#8ef5a8",
+  ink: "#0a1430",
+  white: "#eaf6ff",
 };
