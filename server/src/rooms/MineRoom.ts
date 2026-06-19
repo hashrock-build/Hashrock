@@ -29,6 +29,7 @@ const UPGRADE_COST = 5000; // DEMO sink (coins). Real upgrades = on-chain $HASHR
 const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
 const REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY;
 const MINE_RANGE = TILE * 1.6;
+const MOVE_SPEED = 130; // px/s — server validates client moves against this (+ tolerance)
 const TICK_MS = 100;
 
 const poolPayout = (pool: number) =>
@@ -42,9 +43,12 @@ export class MineRoom extends Room<MineState> {
   private nextOreId = 1;
   private oreOrder: number[] = [];           // FIFO insertion order
   private freeCells: number[] = [];          // ore-spawnable cells (shared deterministic map-gen)
+  private blocked!: Uint8Array;              // collision map (anti-cheat: reject moves into walls)
+  private lastMoveAt = new Map<string, number>(); // sessionId -> last move ms (speed check)
   private pid = new Map<string, string>();   // sessionId -> persistent playerId
   private wallet = new Map<string, string>(); // sessionId -> Solana address (for redeem)
   private dmg = new Map<number, Map<string, number>>(); // oreId -> (sessionId -> damage)
+  private seenDeposits = new Set<string>(); // tx sigs already processed by the deposit watcher
 
   async onCreate(): Promise<void> {
     this.setState(new MineState());
@@ -55,7 +59,9 @@ export class MineRoom extends Room<MineState> {
     this.state.treasury = eco.treasury;
     this.state.cap = ORE_CAP;
 
-    this.freeCells = gen.buildVillage().freeCells; // server & client share this exact map
+    const village = gen.buildVillage(); // server & client share this exact map
+    this.freeCells = village.freeCells;
+    this.blocked = village.blocked;
 
     this.onMessage("move", (client, m: { x: number; y: number }) => this.onMove(client, m));
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));
@@ -72,6 +78,7 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
 
     this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
+    this.clock.setInterval(() => this.pollDeposits(), 15000); // auto-credit incoming deposits
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
     this.spawnOre();
   }
@@ -97,16 +104,30 @@ export class MineRoom extends Room<MineState> {
     this.state.players.delete(client.sessionId);
     this.pid.delete(client.sessionId);
     this.wallet.delete(client.sessionId);
+    this.lastMoveAt.delete(client.sessionId);
   }
 
   // --- intents (authoritative) ---
   private onMove(client: Client, m: { x: number; y: number }): void {
     const p = this.state.players.get(client.sessionId);
     if (!p || typeof m?.x !== "number" || typeof m?.y !== "number") return;
-    // clamp to map; TODO: speed/rate validation to stop teleport-to-ore cheats
-    p.x = Math.max(0, Math.min(MAP_W * TILE, m.x));
-    p.y = Math.max(0, Math.min(MAP_H * TILE, m.y));
+    const now = Date.now();
+    const last = this.lastMoveAt.get(client.sessionId);
+    this.lastMoveAt.set(client.sessionId, now);
+    const dt = last === undefined ? 1 : Math.min(1, (now - last) / 1000);
+    const maxDist = MOVE_SPEED * dt * 1.8 + 8; // anti-teleport: cap step to ~speed × dt
+    let nx = Math.max(0, Math.min(MAP_W * TILE, m.x));
+    let ny = Math.max(0, Math.min(MAP_H * TILE, m.y));
+    const dx = nx - p.x, dy = ny - p.y, dist = Math.hypot(dx, dy);
+    if (dist > maxDist) { nx = p.x + (dx / dist) * maxDist; ny = p.y + (dy / dist) * maxDist; }
+    if (!this.blockedAt(nx, ny)) { p.x = nx; p.y = ny; } // reject moving into walls/water
     p.miningOreId = 0; // moving cancels mining (server-enforced)
+  }
+
+  private blockedAt(wx: number, wy: number): boolean {
+    const gx = Math.floor(wx / TILE), gy = Math.floor(wy / TILE);
+    if (gx < 0 || gy < 0 || gx >= MAP_W || gy >= MAP_H) return true;
+    return this.blocked[gy * MAP_W + gx] === 1;
   }
 
   private onMineStart(client: Client, m: { oreId: number }): void {
@@ -203,6 +224,31 @@ export class MineRoom extends Room<MineState> {
       p.coins += dep.amount; this.state.treasury += dep.amount;
       client.send("depositOk", { amount: dep.amount, sig, url: chain.explorer(sig) });
     } catch (e) { client.send("depositErr", { msg: "verify failed" }); console.error("[deposit]", e); }
+  }
+
+  // Auto-watcher: poll the treasury account, credit any new $HASHROCK deposit to the
+  // player whose registered wallet sent it (dedupe by signature; safe for offline players).
+  private async pollDeposits(): Promise<void> {
+    let sigs: string[];
+    try { sigs = await chain.recentTreasurySigs(15); } catch { return; }
+    for (const sig of sigs) {
+      if (this.seenDeposits.has(sig)) continue;
+      this.seenDeposits.add(sig);
+      try {
+        const dep = await chain.verifyDeposit(sig);
+        if (!dep) continue;
+        const playerId = await db.playerByWallet(dep.source);
+        if (!playerId) continue;
+        if (!(await db.persistDeposit(playerId, dep.amount, sig))) continue; // already credited
+        this.state.treasury += dep.amount;
+        const sid = [...this.pid.entries()].find(([, pidv]) => pidv === playerId)?.[0];
+        if (sid) {
+          const p = this.state.players.get(sid);
+          if (p) p.coins += dep.amount;
+          this.clients.find((c) => c.sessionId === sid)?.send("depositOk", { amount: dep.amount, sig, url: chain.explorer(sig) });
+        }
+      } catch (e) { console.error("[deposit-watch]", e); }
+    }
   }
 
   // --- spawn (blockhash -> free cell) + FIFO ---

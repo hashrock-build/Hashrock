@@ -59,6 +59,12 @@ export async function redeemTo(dest: string, amount: number): Promise<string> {
   return transfer(conn, treasury, treasuryAta, destAta.address, treasury, amount);
 }
 
+/** Recent tx signatures touching the treasury token account (for the deposit watcher). */
+export async function recentTreasurySigs(limit = 15): Promise<string[]> {
+  const sigs = await conn.getSignaturesForAddress(treasuryAta, { limit });
+  return sigs.map((s) => s.signature);
+}
+
 /** Verify a confirmed tx really moved $HASHROCK INTO the treasury; return {amount, source}. */
 export async function verifyDeposit(sig: string): Promise<{ amount: number; source: string } | null> {
   const tx = await conn.getParsedTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });

@@ -55,6 +55,10 @@ export async function getWallet(playerId: string): Promise<string | null> {
 export async function setName(playerId: string, name: string): Promise<void> {
   await pool.query(`UPDATE players SET name = $2 WHERE id = $1`, [playerId, name]);
 }
+export async function playerByWallet(wallet: string): Promise<string | null> {
+  const { rows } = await pool.query(`SELECT id FROM players WHERE wallet = $1 LIMIT 1`, [wallet]);
+  return rows[0]?.id ?? null;
+}
 
 /** REDEEM: burn coins + reduce treasury backing (on-chain release happens separately). */
 export async function persistRedeem(playerId: string, amount: number): Promise<void> {
