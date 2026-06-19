@@ -101,7 +101,7 @@ insolvent.
 ## Status & roadmap
 - ✅ **M1** — Top-down render, camera follow, 4-direction player, blockhash ore + FIFO, depth-by-Y
 - ✅ **M2** — 112×112 village (terrain grass/dirt/water, ponds, farms, houses, trees/rocks/bushes, culled ground + collision), hard-bounded forest ring, camera clamped to map bounds, Pixel Crawler art (tiles, animated player, mining swing, ore = diamond crystal-cluster that shrinks with HP), free-cell ore spawn with `noOre` exclusion (forest/house/farm/water), cap 150, HUD (coins/pool/treasury/creator + ore tracker), local reward calc (k% pool, payout proportional to damage), demo upgrade sink (95/5). **Economy v2 locked** (see MVP.md).
-- ⬜ **M3** — Authoritative WebSocket + smart contract (deposit/redeem/treasury) on testnet
+- 🟦 **M3** *(current)* — Authoritative server + on-chain deposit/redeem. Stack: **Colyseus** (WS) + **Postgres** + treasury = **EOA** (no custom program for MVP; multisig/program at mainnet per invariant #5). `server/` scaffold + state schema + MineRoom (authoritative ore spawn/FIFO, time-based mining, multi-user damage-share reward, pool) BOOTS in-memory. Left: Postgres persistence + deposit/redeem (EOA), shared deterministic map-gen (server/client agree on ore cells), client wiring (render synced state + send intents), blockhash relayer.
 - ⬜ **M4** — End-to-end Phantom, blockhash relayer, live testnet
 
 ## Assets & license
