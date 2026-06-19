@@ -330,10 +330,13 @@ export class MineRoom extends Room<MineState> {
     // local pseudo-hash only until the relayer has fetched one (startup / RPC hiccup).
     const realbh = chain.currentBlockhash();
     const blockhash = realbh || `local${Math.floor(Math.random() * 1e9).toString(16)}`;
-    const value = realbh ? chain.blockhashValue(realbh) : Math.floor(Math.random() * 65536);
+    const id = this.nextOreId++;
+    // devnet getLatestBlockhash is "sticky" (same value for ~60s), so mix in the ore id to
+    // spread spawns — the blockhash is still the on-chain entropy seed, the id de-collides.
+    const value = realbh ? (chain.blockhashValue(realbh) + id * 2654435761) >>> 0 : Math.floor(Math.random() * 65536);
     const cell = this.freeCells[value % this.freeCells.length];
     const ore = new OreState();
-    ore.id = this.nextOreId++;
+    ore.id = id;
     ore.gx = cell % MAP_W; ore.gy = Math.floor(cell / MAP_W);
     ore.hp = ORE_HP; ore.maxHp = ORE_HP; ore.blockhash = blockhash;
     this.state.ores.set(String(ore.id), ore);

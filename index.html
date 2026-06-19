@@ -87,17 +87,29 @@
     .shoprow button { padding: 5px 10px; }
 
     /* === game-themed cards (crystal/mining) === */
-    .modal { background: rgba(8,6,16,.66); }
-    .card, #stats { border: 2px solid #46639c; border-radius: 14px;
-      background: linear-gradient(180deg, rgba(34,31,52,.97), rgba(18,16,30,.97));
-      box-shadow: inset 0 0 0 2px rgba(143,228,245,.08), inset 0 2px 0 rgba(255,255,255,.05), 0 14px 40px rgba(0,0,0,.55); }
-    .card .phead, #stats .phead { color: #ffd23f; font-size: 15px; letter-spacing: .5px; font-weight: 800;
-      padding-bottom: 7px; margin-bottom: 7px; border-bottom: 1px solid rgba(143,228,245,.22);
-      text-shadow: 0 0 8px rgba(255,210,90,.35), 0 1px 0 #0c1830; }
-    #wallet { background: linear-gradient(180deg, #8fe4f5, #3aa6d8); color: #0c2030; box-shadow: 0 0 12px rgba(143,228,245,.35); }
+    .modal { background: rgba(6,5,14,.7); }
+    .card, #stats {
+      border: 0; border-radius: 14px;
+      background: linear-gradient(180deg, rgba(40,37,62,.98), rgba(17,15,28,.98));
+      box-shadow: 0 0 0 2px #0c1326, 0 0 0 4px #4a6bb0, 0 0 0 5px #0c1326,
+                  inset 0 0 28px rgba(143,228,245,.07), inset 0 2px 0 rgba(255,255,255,.06), 0 18px 48px rgba(0,0,0,.62);
+    }
+    .card .phead, #stats .phead {
+      color: #ffd23f; font-size: 15px; font-weight: 800; letter-spacing: .6px; text-align: center;
+      padding: 4px 0 8px; margin-bottom: 8px; border-bottom: 2px solid rgba(143,228,245,.25);
+      text-shadow: 0 0 10px rgba(255,210,90,.4), 0 1px 0 #0c1830;
+    }
+    button { box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 2px 0 rgba(0,0,0,.3); }
+    button.ghost { background: linear-gradient(180deg, #3c4a72, #28304c); color: #cfe0ff;
+      box-shadow: inset 0 0 0 1px rgba(143,228,245,.18), 0 2px 0 rgba(0,0,0,.3); }
+    #wallet { background: linear-gradient(180deg, #8fe4f5, #3aa6d8); color: #08222e;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.3), 0 0 14px rgba(143,228,245,.4); }
+    .chip { background: #181530; }
+    .chip.sel { box-shadow: inset 0 0 0 1px #ffd23f, 0 0 8px rgba(255,210,90,.3); }
+    .shoprow { background: #15122a; }
     .pvslot { width: 170px; height: 170px; margin: 4px auto 8px; display: flex; align-items: center; justify-content: center;
-      background: radial-gradient(circle at 50% 78%, rgba(143,228,245,.16), transparent 66%); border-radius: 14px;
-      box-shadow: inset 0 0 0 1px rgba(143,228,245,.12); }
+      background: radial-gradient(circle at 50% 76%, rgba(143,228,245,.18), transparent 64%); border-radius: 14px;
+      box-shadow: inset 0 0 0 1px rgba(143,228,245,.14), inset 0 0 30px rgba(143,228,245,.06); }
     .pvslot canvas { image-rendering: pixelated; }
   </style>
 </head>
@@ -150,7 +162,6 @@
       <div id="skinpicker" class="picker"></div>
       <div class="prow dim" style="margin-top:6px">axe rarity <span class="dim" style="font-size:10px">(preview)</span></div>
       <div id="axepicker" class="picker"></div>
-      <div class="prow dim" style="font-size:10px;margin-top:4px">hats / hair / outfits become on-chain items in the marketplace (custom art)</div>
 
       <button id="redeembtn" style="margin-top:10px">💱 Request Redeem</button>
       <button id="disconnect" class="ghost mini">Disconnect</button>
