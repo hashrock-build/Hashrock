@@ -18,7 +18,9 @@ export class PlayerState extends Schema {
   @type("number") coins = 0;       // off-chain balance (mirror of DB)
   @type("number") throughput = 1;  // mining-speed multiplier (derived from axe rarity)
   @type("number") miningOreId = 0; // 0 = not mining
-  @type("number") skin = 0;        // cosmetic skin id (tint)
+  @type("number") skin = 0;        // outfit/body tint id
+  @type("number") hair = 0;        // hair cosmetic id
+  @type("number") hat = 0;         // hat cosmetic id
   @type("number") axe = 0;         // axe rarity id (drives throughput)
 }
 

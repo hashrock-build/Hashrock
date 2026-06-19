@@ -2,7 +2,7 @@ import { Application } from "pixi.js";
 import { World } from "./world";
 import { connect } from "./net";
 import { getPhantom, connectPhantom, disconnectPhantom } from "./wallet";
-import { SKINS, AXES } from "../shared/items";
+import { SKINS, HAIRS, HATS, AXES, RARITY_COLOR, type Cosmetic } from "../shared/items";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadPlayerAnims } from "./player";
 import { loadProps } from "./props";
@@ -88,22 +88,31 @@ async function main(): Promise<void> {
   $("profileClose").addEventListener("click", () => closeModal("profileModal"));
   $("redeemClose").addEventListener("click", () => closeModal("redeemModal"));
 
-  // ---- skin / axe pickers (rebuilt from authoritative state) ----
+  // ---- cosmetic / axe pickers (rebuilt from authoritative state) ----
+  const cosChip = (it: Cosmetic, sel: boolean, onpick: () => void): HTMLElement => {
+    const c = document.createElement("div");
+    c.className = "chip" + (sel ? " sel" : "");
+    c.style.borderColor = sel ? "#ffd23f" : RARITY_COLOR[it.rarity];
+    c.title = it.rarity;
+    const hex = "#" + (it.color >>> 0).toString(16).padStart(6, "0");
+    c.innerHTML = `<span class="dot" style="background:${it.color ? hex : "transparent"};border:1px solid #555"></span>${it.name}`;
+    c.onclick = onpick;
+    return c;
+  };
+  const fillCos = (elId: string, list: Cosmetic[], cur: number, msg: string, key: string) => {
+    const el = $(elId); el.innerHTML = "";
+    list.forEach((it) => el.appendChild(cosChip(it, cur === it.id, () => net!.room.send(msg, { [key]: it.id }))));
+  };
   function buildPickers(): void {
-    const sp = $("skinpicker"); sp.innerHTML = "";
-    SKINS.forEach((s) => {
-      const c = document.createElement("div");
-      c.className = "chip" + (world.skin === s.id ? " sel" : "");
-      c.innerHTML = `<span class="dot" style="background:#${(s.tint >>> 0).toString(16).padStart(6, "0")}"></span>${s.name}`;
-      c.addEventListener("click", () => net!.room.send("setSkin", { skin: s.id }));
-      sp.appendChild(c);
-    });
+    fillCos("skinpicker", SKINS, world.skin, "setSkin", "skin");
+    fillCos("hairpicker", HAIRS, world.hair, "setHair", "hair");
+    fillCos("hatpicker", HATS, world.hat, "setHat", "hat");
     const ap = $("axepicker"); ap.innerHTML = "";
     AXES.forEach((a) => {
       const c = document.createElement("div");
       c.className = "chip" + (world.axe === a.id ? " sel" : "");
       c.innerHTML = `<span class="dot" style="background:${a.color}"></span>${a.name} · ${a.mult}×`;
-      c.addEventListener("click", () => net!.room.send("setAxe", { axe: a.id }));
+      c.onclick = () => net!.room.send("setAxe", { axe: a.id });
       ap.appendChild(c);
     });
   }

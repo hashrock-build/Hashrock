@@ -11,6 +11,10 @@ import { WorldProps } from "./props";
 import { MAP_W, MAP_H, idx, inB, buildVillage, Village } from "./village";
 import { GroundLayer } from "./ground";
 import { SKINS } from "../shared/items";
+import { drawCosmetics } from "./cosmetics";
+
+const HEAD_Y = -TILE * 1.5, HEAD_R = TILE * 0.42;        // local player sprite head
+const AV_HEAD_Y = -TILE * 0.42, AV_HEAD_R = TILE * 0.26; // remote avatar head
 
 const MINE_RANGE = TILE * 1.6;
 const MOVE_SPEED = 130;        // px/sec (client prediction; server validates range)
@@ -18,7 +22,7 @@ const MOVE_SEND_MS = 80;       // throttle position updates to the server
 const BASE_MINE_TIME = 30;     // for the local progress bar only (server is authoritative)
 
 interface NetOre { id: number; gx: number; gy: number; hp: number; maxHp: number; blockhash: string; }
-interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; axe: number; }
+interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; hair: number; hat: number; axe: number; }
 
 export interface WorldAssets {
   groundTiles?: GroundTiles;
@@ -48,7 +52,9 @@ export class World {
   private cb: any; // getStateCallbacks proxy (loosely typed)
   private oreGfx = new Map<number, Container>();
   private oreBucket = new Map<number, number>();
-  private others = new Map<string, Container>();
+  private others = new Map<string, { c: Container; body: Graphics; cos: Graphics; hair: number; hat: number; skin: number }>();
+  private cosmeticG?: Graphics; // hair/hat overlay on the local player
+  private lastCos = "";
   private miningOreId: number | null = null;
   private miningBar!: Container;
   private miningBarG!: Graphics;
@@ -95,7 +101,10 @@ export class World {
     this.px = start.x; this.py = start.y;
     if (assets.playerAnims) {
       this.playerCtl = new Player(assets.playerAnims, TILE / 16);
-      this.playerNode = this.playerCtl.sprite;
+      const wrap = new Container();
+      this.cosmeticG = new Graphics();
+      wrap.addChild(this.playerCtl.sprite, this.cosmeticG); // sprite + hair/hat overlay
+      this.playerNode = wrap;
     } else {
       this.playerNode = this.makePlayerFallback();
     }
@@ -122,6 +131,8 @@ export class World {
   get oreCount(): number { return this.state?.ores?.size ?? 0; }
   get cap(): number { return this.state?.cap ?? 150; }
   get skin(): number { return this.state?.players?.get(this.room.sessionId)?.skin ?? 0; }
+  get hair(): number { return this.state?.players?.get(this.room.sessionId)?.hair ?? 0; }
+  get hat(): number { return this.state?.players?.get(this.room.sessionId)?.hat ?? 0; }
   get axe(): number { return this.state?.players?.get(this.room.sessionId)?.axe ?? 0; }
   get pname(): string { return this.state?.players?.get(this.room.sessionId)?.name ?? ""; }
 
@@ -146,6 +157,8 @@ export class World {
         });
         this.applySkin(p.skin);
         $(p).listen("skin", (v: number) => this.applySkin(v));
+        $(p).listen("hair", () => { this.lastCos = ""; this.onChange?.(); });
+        $(p).listen("hat", () => { this.lastCos = ""; this.onChange?.(); });
       } else {
         this.addOther(sid, p);
         $(p).onChange(() => this.updateOther(sid, p));
@@ -181,29 +194,39 @@ export class World {
     if (this.miningOreId === id) this.miningOreId = null;
   }
 
-  // ---- other players (simple avatars) ----
+  // ---- other players (simple avatars + cosmetics) ----
   private addOther(sid: string, p: NetPlayer): void {
     const c = new Container();
-    const g = new Graphics();
-    g.ellipse(0, TILE * 0.42, TILE * 0.3, TILE * 0.15).fill({ color: 0x000000, alpha: 0.2 });
-    g.roundRect(-TILE * 0.26, -TILE * 0.42, TILE * 0.52, TILE * 0.66, 5).fill(0xc06b4a);
-    g.circle(0, -TILE * 0.42, TILE * 0.24).fill(0xf2c89a);
+    const body = new Graphics();
+    body.ellipse(0, TILE * 0.42, TILE * 0.3, TILE * 0.15).fill({ color: 0x000000, alpha: 0.2 });
+    body.roundRect(-TILE * 0.26, -TILE * 0.42, TILE * 0.52, TILE * 0.66, 5).fill(0xc06b4a);
+    body.circle(0, -TILE * 0.42, TILE * 0.24).fill(0xf2c89a);
+    body.tint = SKINS[p.skin]?.color ?? 0xffffff;
+    const cos = new Graphics();
     const name = new Text({ text: p.name, style: { fontFamily: "system-ui, sans-serif", fontSize: 10, fill: "#fff", stroke: { color: "#1a1330", width: 3 } } });
     name.anchor.set(0.5, 1); name.y = -TILE * 0.7;
-    c.addChild(g, name);
+    c.addChild(body, cos, name);
     c.x = p.x; c.y = p.y; c.zIndex = p.y;
-    c.tint = SKINS[p.skin]?.tint ?? 0xffffff;
+    drawCosmetics(cos, "down", p.hair, p.hat, AV_HEAD_Y, AV_HEAD_R);
     this.entities.addChild(c);
-    this.others.set(sid, c);
+    this.others.set(sid, { c, body, cos, hair: p.hair, hat: p.hat, skin: p.skin });
   }
   private updateOther(sid: string, p: NetPlayer): void {
-    const c = this.others.get(sid);
-    if (c) { c.x = p.x; c.y = p.y; c.zIndex = p.y; c.tint = SKINS[p.skin]?.tint ?? 0xffffff; }
+    const o = this.others.get(sid);
+    if (!o) return;
+    o.c.x = p.x; o.c.y = p.y; o.c.zIndex = p.y;
+    if (p.skin !== o.skin) { o.body.tint = SKINS[p.skin]?.color ?? 0xffffff; o.skin = p.skin; }
+    if (p.hair !== o.hair || p.hat !== o.hat) {
+      drawCosmetics(o.cos, "down", p.hair, p.hat, AV_HEAD_Y, AV_HEAD_R);
+      o.hair = p.hair; o.hat = p.hat;
+    }
   }
   private applySkin(skinId: number): void {
-    this.playerNode.tint = SKINS[skinId]?.tint ?? 0xffffff;
+    const tint = SKINS[skinId]?.color ?? 0xffffff;
+    if (this.playerCtl) this.playerCtl.sprite.tint = tint; // tint body only, not cosmetics
+    else this.playerNode.tint = tint;
   }
-  private removeOther(sid: string): void { this.others.get(sid)?.destroy(); this.others.delete(sid); }
+  private removeOther(sid: string): void { this.others.get(sid)?.c.destroy(); this.others.delete(sid); }
 
   // ---- props / map (client-rendered from shared gen) ----
   private buildProps(): void {
@@ -337,6 +360,11 @@ export class World {
 
     if (this.playerCtl) this.playerCtl.update(this.facing, moving, mineActive);
     else this.drawPlayer(this.playerNode as Graphics);
+    // redraw hair/hat overlay only when facing or equipped cosmetics changed
+    if (this.cosmeticG) {
+      const key = `${this.facing}|${this.hair}|${this.hat}`;
+      if (key !== this.lastCos) { drawCosmetics(this.cosmeticG, this.facing, this.hair, this.hat, HEAD_Y, HEAD_R); this.lastCos = key; }
+    }
     this.playerNode.x = this.px; this.playerNode.y = this.py; this.playerNode.zIndex = this.py;
 
     // throttled position send — ONLY while moving (a "move" msg cancels mining server-side,

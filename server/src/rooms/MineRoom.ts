@@ -12,7 +12,7 @@ import { MineState, OreState, PlayerState } from "./schema";
 import * as db from "../db";
 import * as chain from "../chain";
 import * as gen from "../../../shared/mapgen";
-import { SKINS, AXES, axeMult } from "../../../shared/items";
+import { SKINS, HAIRS, HATS, AXES, axeMult } from "../../../shared/items";
 
 const TILE = gen.TILE;
 const MAP_W = gen.MAP_W, MAP_H = gen.MAP_H;
@@ -63,8 +63,10 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("upgrade", (client) => this.onUpgrade(client));
     this.onMessage("setWallet", (client, m: { address: string }) => this.onSetWallet(client, m));
     this.onMessage("setName", (client, m: { name: string }) => this.onSetName(client, m));
-    this.onMessage("setSkin", (client, m: { skin: number }) => this.onSetSkin(client, m));
-    this.onMessage("setAxe", (client, m: { axe: number }) => this.onSetAxe(client, m));
+    this.onMessage("setSkin", (client, m: { skin: number }) => this.equip(client, "skin", m?.skin, SKINS.length));
+    this.onMessage("setHair", (client, m: { hair: number }) => this.equip(client, "hair", m?.hair, HAIRS.length));
+    this.onMessage("setHat", (client, m: { hat: number }) => this.equip(client, "hat", m?.hat, HATS.length));
+    this.onMessage("setAxe", (client, m: { axe: number }) => this.equip(client, "axe", m?.axe, AXES.length));
     this.onMessage("getHashrock", (client) => this.sendHashrock(client));
     this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
@@ -84,7 +86,8 @@ export class MineRoom extends Room<MineState> {
     const p = new PlayerState();
     const c = cellCenter(MAP_W >> 1, MAP_H >> 1);
     p.x = c.x; p.y = c.y;
-    p.name = prof.name; p.coins = prof.coins; p.skin = prof.skin; p.axe = prof.axe;
+    p.name = prof.name; p.coins = prof.coins;
+    p.skin = prof.skin; p.hair = prof.hair; p.hat = prof.hat; p.axe = prof.axe;
     p.throughput = axeMult(prof.axe);
     this.state.players.set(client.sessionId, p);
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
@@ -143,21 +146,17 @@ export class MineRoom extends Room<MineState> {
     client.send("nameSet", { name });
   }
 
-  private onSetSkin(client: Client, m: { skin: number }): void {
-    const skin = Math.floor(m?.skin ?? 0);
-    if (skin < 0 || skin >= SKINS.length) return;
+  // Equip a cosmetic/axe slot. NOTE: free for now (demo/preview); real items are bought
+  // on-chain (marketplace) later. Cosmetics are visual; axe also sets throughput.
+  private equip(client: Client, slot: "skin" | "hair" | "hat" | "axe", raw: number | undefined, len: number): void {
+    const v = Math.floor(raw ?? 0);
+    if (v < 0 || v >= len) return;
     const p = this.state.players.get(client.sessionId);
-    if (p) p.skin = skin;
-    persist(db.setSkin(this.pid.get(client.sessionId)!, skin));
-  }
-
-  // NOTE: free equip for now (demo/preview); real axes are acquired on-chain (marketplace).
-  private onSetAxe(client: Client, m: { axe: number }): void {
-    const axe = Math.floor(m?.axe ?? 0);
-    if (axe < 0 || axe >= AXES.length) return;
-    const p = this.state.players.get(client.sessionId);
-    if (p) { p.axe = axe; p.throughput = axeMult(axe); }
-    persist(db.setAxe(this.pid.get(client.sessionId)!, axe));
+    if (p) {
+      p[slot] = v;
+      if (slot === "axe") p.throughput = axeMult(v);
+    }
+    persist(db.setSlot(this.pid.get(client.sessionId)!, slot, v));
   }
 
   private async sendHashrock(client: Client): Promise<void> {

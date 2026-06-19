@@ -36,6 +36,8 @@ export async function initSchema(seedPool: number): Promise<void> {
   `);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS wallet TEXT`); // Solana address for redeem
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS skin INT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS hair INT NOT NULL DEFAULT 0`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS hat INT NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS axe INT NOT NULL DEFAULT 0`);
   // seed economy: pool = seed, treasury backs it 1:1 (= seed), creator = 0
   await pool.query(
@@ -91,18 +93,17 @@ export async function getEconomy(): Promise<Economy> {
   return { pool: n(rows[0].pool), creator: n(rows[0].creator), treasury: n(rows[0].treasury) };
 }
 
-export interface Profile { coins: number; skin: number; axe: number; name: string; }
+export interface Profile { coins: number; skin: number; hair: number; hat: number; axe: number; name: string; }
 /** Create the player row if missing (without clobbering a saved username); returns profile. */
 export async function ensurePlayer(id: string, name: string): Promise<Profile> {
   await pool.query(`INSERT INTO players (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, name]);
-  const { rows } = await pool.query(`SELECT coins, skin, axe, name FROM players WHERE id = $1`, [id]);
-  return { coins: n(rows[0].coins), skin: n(rows[0].skin), axe: n(rows[0].axe), name: rows[0].name };
+  const { rows } = await pool.query(`SELECT coins, skin, hair, hat, axe, name FROM players WHERE id = $1`, [id]);
+  const r = rows[0];
+  return { coins: n(r.coins), skin: n(r.skin), hair: n(r.hair), hat: n(r.hat), axe: n(r.axe), name: r.name };
 }
-export async function setSkin(id: string, skin: number): Promise<void> {
-  await pool.query(`UPDATE players SET skin = $2 WHERE id = $1`, [id, skin]);
-}
-export async function setAxe(id: string, axe: number): Promise<void> {
-  await pool.query(`UPDATE players SET axe = $2 WHERE id = $1`, [id, axe]);
+/** Equip a cosmetic/axe slot. `slot` is a whitelisted column name. */
+export async function setSlot(id: string, slot: "skin" | "hair" | "hat" | "axe", value: number): Promise<void> {
+  await pool.query(`UPDATE players SET ${slot} = $2 WHERE id = $1`, [id, value]);
 }
 
 /** Mining reward: pool -> player (redistribution; treasury unchanged). */
