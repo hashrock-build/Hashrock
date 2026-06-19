@@ -20,8 +20,11 @@ function toast(msg: string): void {
   toastTimer = window.setTimeout(() => t.classList.remove("show"), 1800);
 }
 
-// The wallet IS the identity: playerId = wallet address. You can't play (or earn) without
-// connecting a wallet — this binds all earnings to an on-chain account (no anonymous farming).
+// Entering REQUIRES a connected wallet (gated on the landing). Identity stays a secret
+// per-browser playerId (UUID) — NOT the public wallet address, which would let anyone join
+// as your id and redeem your coins. The wallet is bound (setWallet) for redeem, and the
+// server only pays mining rewards once a wallet is bound (see MineRoom) — so no earning
+// without a wallet.
 async function enterGame(walletAddr: string): Promise<void> {
   const app = new Application();
   await app.init({ background: "#3a5a2a", resizeTo: window, antialias: false });
@@ -33,7 +36,7 @@ async function enterGame(walletAddr: string): Promise<void> {
 
   let net;
   try {
-    net = await connect("miner", walletAddr); // wallet address = playerId
+    net = await connect("miner"); // identity = secret localStorage UUID (not the public wallet)
   } catch (e) {
     toast("⚠ server offline — start: npm --prefix server run dev");
     console.error("[net] connect failed", e);

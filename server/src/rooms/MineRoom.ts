@@ -450,6 +450,7 @@ export class MineRoom extends Room<MineState> {
     const dt = dtMs / 1000;
     this.state.players.forEach((p, sessionId) => {
       if (!p.miningOreId) return;
+      if (!this.wallet.has(sessionId)) { p.miningOreId = 0; return; } // no wallet bound → can't mine/earn
       const ore = this.state.ores.get(String(p.miningOreId));
       if (!ore) { p.miningOreId = 0; return; }
       const c = cellCenter(ore.gx, ore.gy);
