@@ -97,8 +97,12 @@ export async function refundRedeem(playerId: string, amount: number): Promise<vo
 
 /** DEPOSIT: $HASHROCK confirmed into treasury → mint coins 1:1. Dedupes by tx signature. */
 export async function persistDeposit(playerId: string, amount: number, sig: string): Promise<boolean> {
-  const dup = await pool.query(`SELECT 1 FROM ledger WHERE kind = 'deposit' AND meta->>'sig' = $1 LIMIT 1`, [sig]);
-  if (dup.rowCount) return false; // already credited
+  // Dedupe against the ENTIRE ledger, not just deposits. A purchase (axe/skin/repair/upgrade) is
+  // ALSO a $HASHROCK transfer INTO the treasury, so the deposit auto-watcher would otherwise see
+  // that same tx and re-credit it as a deposit — minting unbacked coins (the off-chain
+  // double-count bug). If the sig is already recorded under ANY kind, never credit it again.
+  const dup = await pool.query(`SELECT 1 FROM ledger WHERE meta->>'sig' = $1 LIMIT 1`, [sig]);
+  if (dup.rowCount) return false; // already accounted (deposit OR purchase)
   await tx(async (c) => {
     await c.query(`UPDATE players SET coins = coins + $1 WHERE id = $2`, [amount, playerId]);
     await c.query(`UPDATE economy SET treasury = treasury + $1 WHERE id = 1`, [amount]);
