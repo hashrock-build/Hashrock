@@ -41,6 +41,7 @@ services:
       BASE_MINE_TIME_SEC: ${BASE_MINE_TIME_SEC:-30}
       SPAWN_INTERVAL_SEC: ${SPAWN_INTERVAL_SEC:-60}
       CAVE_MIN_HOLD: ${CAVE_MIN_HOLD:-100}   # M5: $HASHROCK a wallet must hold to enter the cave zone
+      FORGE_MIN_HOLD: ${FORGE_MIN_HOLD:-500} # M5: higher VIP gate for the forge zone
       SOLANA_RPC: ${SOLANA_RPC:?set SOLANA_RPC in .env}
       SOLANA_CLUSTER: ${SOLANA_CLUSTER:-devnet}
       # MUST match the on-chain mint (devnet legacy = 0, mainnet $HASHROCK = 6). initChain()
