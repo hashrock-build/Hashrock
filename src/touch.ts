@@ -7,6 +7,7 @@ const isTouch = () =>
 
 export function initTouchControls(world: World): void {
   if (!isTouch() || document.getElementById("touchPad")) return;
+  document.body.classList.add("touch"); // drives the mobile HUD CSS (menu, hidden feed, rotate hint)
 
   const css = (el: HTMLElement, s: Partial<CSSStyleDeclaration>) => Object.assign(el.style, s);
 
