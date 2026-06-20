@@ -373,7 +373,7 @@ function initLanding(): void {
     try { await navigator.clipboard.writeText($("caAddr").textContent ?? ""); toast("📋 contract address copied"); } catch { toast("copy failed"); }
   });
 
-  // live "miners online" (lightweight /stats; refresh every 10s). CA stays "coming soon" for now.
+  // live "miners online" (lightweight /stats; refresh every 10s). CA is live (set in index.html).
   const refreshOnline = () => roomStats().then((s) => { $("stOnline").textContent = String(s.online); }).catch(() => {});
   refreshOnline();
   setInterval(refreshOnline, 10000);

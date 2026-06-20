@@ -169,7 +169,8 @@
     .lca .box { display: flex; align-items: center; gap: 10px; background: rgba(20,18,30,.7); border: 1px solid #34304e;
       border-radius: 11px; padding: 9px 14px; font-family: ui-monospace, monospace; font-size: 12px; max-width: 100%; }
     .lca .box .lbl { color: #ffd23f; font-weight: 800; }
-    .lca .box .addr { color: #cfc8e8; overflow: hidden; text-overflow: ellipsis; }
+    .lca .box .addr { color: #cfc8e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; text-decoration: none; }
+    .lca .box a.addr:hover { color: #ffd23f; }
     .lca .box button { padding: 4px 9px; font-size: 11px; }
     .lfoot { position: relative; z-index: 1; text-align: center; color: #6f688c; font-size: 11px; padding: 0 22px 30px; }
 
@@ -268,7 +269,7 @@
     <div class="lca">
       <div class="box">
         <span class="lbl">$HASHROCK CA</span>
-        <span class="addr" id="caAddr">coming soon</span>
+        <a class="addr" id="caAddr" href="https://solscan.io/token/B4z8tBZ7MmdQrGMuMx4wfKGSq1YLPwcfBixzUBLe9ory" target="_blank" rel="noopener" title="View $HASHROCK on Solscan">B4z8tBZ7MmdQrGMuMx4wfKGSq1YLPwcfBixzUBLe9ory</a>
         <button class="ghost" id="caCopy">copy</button>
       </div>
     </div>
