@@ -1,6 +1,6 @@
 // One-time devnet setup for $HASHROCK (treasury = EOA, MVP).
 // Creates a dedicated treasury keypair, funds it from the CLI deploy wallet, mints the
-// fixed 1B supply (decimals 0 → 1 token == 1 in-game coin) to the treasury, then PERMANENTLY
+// fixed 500K supply (decimals 0 → 1 token == 1 in-game coin) to the treasury, then PERMANENTLY
 // disables the mint authority (fixed supply forever). Prints the values for server/.env.
 //
 //   run:  node scripts/setup-chain.mjs
@@ -14,7 +14,7 @@ import fs from "fs";
 // On mainnet the deployer needs REAL SOL (no airdrop) and you must move the treasury to a
 // multisig afterwards — see MAINNET.md.
 const RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
-const SUPPLY = Number(process.env.SUPPLY || 1_000_000_000); // fixed 1B, decimals 0
+const SUPPLY = Number(process.env.SUPPLY || 500_000); // fixed 500K, decimals 0 (devnet self-mint; mainnet launches on Orynth)
 const TREASURY_PATH = "./.treasury.json";
 const DEPLOY_PATH = process.env.DEPLOYER_KEYPAIR || `${process.env.HOME}/cora-deploy/keys/deploy-wallet.json`;
 const conn = new Connection(RPC, "confirmed");

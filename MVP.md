@@ -21,15 +21,15 @@ pickaxe → **coins** → manual redeem → **$TOKEN**. The competition is about
 | Wallet | Phantom |
 
 ## Economy v2 (deposit-backed, solvent, on-chain sinks) — LOCKED
-Dual currency: **$HASHROCK** (on-chain SPL, FIXED **1B** supply) + **Coin** (off-chain, in-game).
+Dual currency: **$HASHROCK** (on-chain SPL, FIXED **500K** supply, launching on **Orynth**) + **Coin** (off-chain, in-game).
 
 **Invariants (see CLAUDE.md):**
 - Coins are minted ONLY when $HASHROCK enters the Treasury (1:1). Mining does NOT mint.
 - `Total coins (player + pool + creator) === Treasury $HASHROCK × rate`. Always 1:1.
 - Mining = redistribution from the **Reward Pool**; redeeming burns coins; server authoritative.
 
-**Token allocation:** 1B fixed. **100M (10%)** seeds the Reward Pool = the play-to-earn
-budget (protocol-owned coins, backed by 100M Treasury — NOT player-deposit backing).
+**Token allocation:** 500K fixed. **50K (10%)** seeds the Reward Pool = the play-to-earn
+budget (protocol-owned coins, backed by 50K Treasury — NOT player-deposit backing).
 
 ### The two big design decisions
 1. **All sinks are ON-CHAIN, paid in $HASHROCK** (upgrade, repair, marketplace). You can
@@ -46,8 +46,8 @@ budget (protocol-owned coins, backed by 100M Treasury — NOT player-deposit bac
 
 ### Reward payout (self-balancing, never 0)
 `payout/ore = REWARD_RATE × current_pool`, scaled by the player's share of the ore's HP.
-`REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY = 0.10 / 1440 ≈ 0.0069%`/ore. At a 100M pool
-≈ **6,944 coins/ore**; shrinks as the pool drains, recovers as sinks refill. FIFO-evicted
+`REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY = 0.10 / 1440 ≈ 0.0069%`/ore. At a 50K pool
+≈ **~3.5 coins/ore**; shrinks as the pool drains, recovers as sinks refill. FIFO-evicted
 ore keeps its reward in the pool (invariant #7).
 
 ### Sink split & sustainability

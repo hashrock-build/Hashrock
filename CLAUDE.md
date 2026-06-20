@@ -74,14 +74,14 @@ insolvent.
 - FIFO cap default **150** (`CAP` in `world.ts`). Unmined-ore lifetime ≈ cap × spawn interval.
 
 ## Economy parameters (LOCKED — `world.ts`)
-- **Supply**: $HASHROCK fixed **1B**. **100M (10%)** seeds the Reward Pool as the play-to-earn budget (backed 1:1 by Treasury, NOT player-deposit backing).
-- **Mining payout = dynamic % of the *current* pool** (self-balancing, never hits 0): `DAILY_EMISSION = 10%/day` → `REWARD_RATE = 0.10/1440 ≈ 0.0069%` per ore (1 ore/min ⇒ 1440/day). At a 100M pool ≈ **6,944 coins/ore**; payout scales down as the pool drains, up as sinks refill. Scaled by the player's share of the ore's HP.
+- **Supply**: $HASHROCK fixed **500K** (launches on **Orynth**, mainnet). **50K (10%)** seeds the Reward Pool as the play-to-earn budget (backed 1:1 by Treasury, NOT player-deposit backing).
+- **Mining payout = dynamic % of the *current* pool** (self-balancing, never hits 0): `DAILY_EMISSION = 10%/day` → `REWARD_RATE = 0.10/1440 ≈ 0.0069%` per ore (1 ore/min ⇒ 1440/day). At a 50K pool ≈ **~3.5 coins/ore**; payout scales down as the pool drains, up as sinks refill. Scaled by the player's share of the ore's HP.
 - **Sink split (`CREATOR_FEE`)**: upgrade/marketplace/repair fees → **95% Reward Pool** (recycled to miners), **5% creator**. The 5% is the only structural leak; size mining to long-term sink volume (mainly the 5% marketplace fee), NOT to the seed.
 - **Solvency**: total coins (player + pool + creator) === Treasury × rate, always 1:1. `payUpgrade()` only moves coins (no mint/burn) so backing is unchanged.
 
 ## Domain glossary
 - **Coin** — off-chain in-game currency (DB). Backed 1:1 by $HASHROCK.
-- **$HASHROCK** ($TOKEN) — on-chain Solana token, FIXED 1B supply.
+- **$HASHROCK** ($TOKEN) — on-chain Solana token, FIXED 500K supply (launching on Orynth).
 - **Treasury** — $HASHROCK backing every coin (pool + player + creator) 1:1; locked/multisig.
 - **Reward Pool** — coins collected from sinks; the source of mining rewards (drains to miners at ~10%/day, refilled by the 95% sink share).
 - **Creator cut** — 5% of every sink; the protocol's only net outflow.
