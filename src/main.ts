@@ -10,6 +10,7 @@ import { SKINS, AXES, RARITY_COLOR, AXE_MAX_LEVEL, axeLevel, effAxeMult, axeUpgr
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadCharacters } from "./player";
 import { loadProps } from "./props";
+import { initTouchControls } from "./touch";
 
 const $ = (id: string) => document.getElementById(id)!;
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -55,6 +56,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   }
 
   const world = new World(app, { groundTiles, crystals, playerAnims, props }, net.room, net.$, zone);
+  initTouchControls(world); // mobile: on-screen joystick + mine button (touch devices only)
   if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
     (window as unknown as { world: World }).world = world;
 
@@ -367,7 +369,9 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   };
   walletBtn.addEventListener("click", async () => {
     if (connected) return openProfile();
-    if (!getPhantom()) return void toast("No Solana wallet found — install Phantom/Backpack");
+    if (!getPhantom()) return void toast(matchMedia("(pointer: coarse)").matches
+      ? "📱 open hashrock.lol in your Phantom/Backpack app browser"
+      : "No Solana wallet found — install Phantom/Backpack");
     const addr = await connectPhantom(false);
     if (addr) { onConnected(addr); toast("✅ wallet connected — click Profile"); }
     else toast("wallet connection cancelled");
@@ -420,7 +424,9 @@ function initLanding(): void {
   // can mine/earn anonymously. Both "Play Now" and "Connect Wallet" run the same gate.
   const enterWithWallet = async () => {
     if (started) return;
-    if (!getPhantom()) return void toast("No Solana wallet found — install Phantom or Backpack to play");
+    if (!getPhantom()) return void toast(matchMedia("(pointer: coarse)").matches
+      ? "📱 On mobile, open hashrock.lol inside your Phantom/Backpack app browser to play"
+      : "No Solana wallet found — install Phantom or Backpack to play");
     const btns = [$("playBtn"), $("landingWallet")] as HTMLButtonElement[];
     btns.forEach((b) => (b.disabled = true));
     const addr = await connectPhantom(false);

@@ -42,6 +42,12 @@ export class World {
   px: number;
   py: number;
   keys = new Set<string>();
+  private touch: { x: number; y: number } | null = null; // mobile virtual-joystick vector (overrides keys)
+
+  /** Mobile: set the movement vector (−1..1) from the on-screen joystick; null/0,0 = stop. */
+  setMove(x: number, y: number): void { this.touch = x === 0 && y === 0 ? null : { x, y }; }
+  /** Mobile: mine the nearest ore (same as pressing Space). */
+  mine(): void { this.requestMine(); }
   crystals?: Texture[];
   oreScale = 1;
 
@@ -365,10 +371,13 @@ export class World {
   private update(): void {
     const dt = this.app.ticker.deltaMS / 1000;
     let vx = 0, vy = 0;
-    if (this.keys.has("a") || this.keys.has("arrowleft")) vx -= 1;
-    if (this.keys.has("d") || this.keys.has("arrowright")) vx += 1;
-    if (this.keys.has("w") || this.keys.has("arrowup")) vy -= 1;
-    if (this.keys.has("s") || this.keys.has("arrowdown")) vy += 1;
+    if (this.touch) { vx = this.touch.x; vy = this.touch.y; } // mobile joystick overrides keys
+    else {
+      if (this.keys.has("a") || this.keys.has("arrowleft")) vx -= 1;
+      if (this.keys.has("d") || this.keys.has("arrowright")) vx += 1;
+      if (this.keys.has("w") || this.keys.has("arrowup")) vy -= 1;
+      if (this.keys.has("s") || this.keys.has("arrowdown")) vy += 1;
+    }
     const moving = !!(vx || vy);
     if (moving) {
       const len = Math.hypot(vx, vy);
