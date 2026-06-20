@@ -41,8 +41,13 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     net = await connect("miner", walletAddr, auth, zone); // identity = the signed-in wallet address
   } catch (e) {
     const m = (e as { message?: string })?.message || "";
-    // surface the real reason for gated/auth rejections (e.g. the cave $HASHROCK hold gate)
-    toast(/HASHROCK|cave|wallet|login|hold/i.test(m) ? "⚠ " + m : "⚠ server offline — start: npm --prefix server run dev");
+    // cave hold gate → show the dedicated popup (with a Buy $HASHROCK CTA); else a toast
+    if (zone === "cave" && /HASHROCK|hold/i.test(m)) {
+      const sub = document.getElementById("gateSub"); if (sub) sub.textContent = m; // "you hold X"
+      $("gateModal").classList.add("show");
+    } else {
+      toast(/wallet|login|sign/i.test(m) ? "⚠ " + m : "⚠ server offline — start: npm --prefix server run dev");
+    }
     console.error("[net] connect failed", e);
     document.body.classList.remove("playing"); // back to landing
     return;
@@ -377,6 +382,11 @@ function initLanding(): void {
   $("caCopy").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText($("caAddr").textContent ?? ""); toast("📋 contract address copied"); } catch { toast("copy failed"); }
   });
+
+  // cave gate popup close (shown when a non-holder is rejected from the cave zone)
+  const gate = $("gateModal");
+  $("gateClose").addEventListener("click", () => gate.classList.remove("show"));
+  gate.addEventListener("click", (e) => { if (e.target === gate) gate.classList.remove("show"); });
 
   // live "miners online" (lightweight /stats; refresh every 10s). CA is live (set in index.html).
   const refreshOnline = () => roomStats().then((s) => { $("stOnline").textContent = String(s.online); }).catch(() => {});
