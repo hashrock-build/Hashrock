@@ -133,6 +133,15 @@
       background: rgba(6,5,14,.94); border: 1px solid #34304e; z-index: 70; }
     body.touch.playing.menu-open #actions { display: flex; }
     body.touch #actions button { font-size: 15px; padding: 13px 16px; width: 100%; }
+    /* compact top bar: slim treasury (top-left), Profile (top-right), coins/durability drop to row 2 */
+    body.touch #left { width: auto; max-width: 52vw; }
+    body.touch #stats { font-size: 11px; padding: 6px 9px; white-space: nowrap; }
+    body.touch #left .dim { display: none; }                 /* hide "active ore" sub-line on mobile */
+    body.touch #right { width: auto; }
+    body.touch #right button { font-size: 12px; padding: 8px 12px; }
+    body.touch #center { top: 58px; padding: 5px 12px; }     /* second row, clear of left/right */
+    body.touch #center b { font-size: 18px; }
+    body.touch #center .clabel { font-size: 11px; }
     /* rotate-to-landscape hint: touch + portrait + in-game, until dismissed */
     #rotate { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(6,5,14,.94);
       color: #fff; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; padding: 28px; }
