@@ -123,10 +123,19 @@
     body:not(.playing) #actions, body:not(.playing) #feed, body:not(.playing) #tip, body:not(.playing) #soundBtn, body:not(.playing) .touch-controls { display: none !important; }
     /* mobile / touch: hide the keyboard hint, lift the action bar above the on-screen controls, wrap buttons */
     @media (pointer: coarse) {
-      #tip { display: none !important; }
-      #actions { bottom: 172px; flex-wrap: wrap; max-width: 94vw; justify-content: center; }
-      #actions button { font-size: 12px; padding: 7px 10px; }
+      #tip, #feed { display: none !important; }                 /* keyboard hint + feed clutter the small screen */
+      #soundBtn { top: 64px; bottom: auto; }                    /* move up-right, clear of the mine button */
+      #menuBtn { display: flex; }                               /* show the hamburger */
+      /* collapse the 6-button bar into a centered popup menu (toggled by ☰) */
+      #actions { display: none; flex-direction: column; gap: 10px; bottom: auto; top: 50%; left: 50%;
+        transform: translate(-50%, -50%); max-width: 76vw; padding: 18px; border-radius: 14px;
+        background: rgba(6,5,14,.94); border: 1px solid #34304e; z-index: 70; }
+      body.playing.menu-open #actions { display: flex; }
+      #actions button { font-size: 15px; padding: 13px 16px; width: 100%; }
     }
+    #menuBtn { display: none; position: fixed; bottom: 118px; left: 50%; transform: translateX(-50%);
+      z-index: 61; padding: 9px 16px; font-size: 13px; }
+    body:not(.playing) #menuBtn { display: none !important; }
     /* rotate-to-landscape hint: only on touch + portrait + in-game, until dismissed */
     #rotate { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(6,5,14,.94);
       color: #fff; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; padding: 28px; }
@@ -390,6 +399,7 @@
     <button id="otc" class="ghost">🤝 OTC Market</button>
     <button id="zoneBtn">⛏ Enter Cave</button>
   </div>
+  <button id="menuBtn">☰ Menu</button>
 
   <div id="feed"></div>
 

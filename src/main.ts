@@ -459,6 +459,10 @@ function initLanding(): void {
   // mobile: dismiss the rotate-to-landscape hint ("Play anyway")
   $("rotateDismiss").addEventListener("click", () => document.body.classList.add("rotate-ok"));
 
+  // mobile: ☰ collapses the action bar into a popup menu; picking an action closes it
+  $("menuBtn").addEventListener("click", () => document.body.classList.toggle("menu-open"));
+  $("actions").addEventListener("click", (e) => { if ((e.target as HTMLElement).tagName === "BUTTON") document.body.classList.remove("menu-open"); });
+
   // cave gate popup close (shown when a non-holder is rejected from the cave zone)
   const gate = $("gateModal");
   $("gateClose").addEventListener("click", () => gate.classList.remove("show"));
