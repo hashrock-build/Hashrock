@@ -27,6 +27,7 @@ const REWARD_FLOOR = Number(process.env.REWARD_FLOOR ?? 1);
 const CREATOR_FEE = Number(process.env.CREATOR_FEE ?? 0.05);
 const BASE_MINE_TIME = Number(process.env.BASE_MINE_TIME_SEC ?? 30);
 const SPAWN_INTERVAL = Number(process.env.SPAWN_INTERVAL_SEC ?? 60) * 1000;
+const CAVE_MIN_HOLD = Number(process.env.CAVE_MIN_HOLD ?? 100); // $HASHROCK gate to enter the cave zone
 const UPGRADE_COST = 500; // DEMO sink (coins). Real upgrades = on-chain $HASHROCK (invariant #8).
 const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
 const DUR_PER_ORE = 2;     // axe durability lost per ore fully mined
@@ -52,6 +53,7 @@ export class MineRoom extends Room<MineState> {
   private oreOrder: number[] = [];           // FIFO insertion order
   private freeCells: number[] = [];          // ore-spawnable cells (shared deterministic map-gen)
   private blocked!: Uint8Array;              // collision map (anti-cheat: reject moves into walls)
+  private zone = "village";                  // "village" (default) or "cave" (M5 gated zone)
   private lastMoveAt = new Map<string, number>(); // sessionId -> last move ms (speed check)
   private pid = new Map<string, string>();   // sessionId -> persistent playerId
   private wallet = new Map<string, string>(); // sessionId -> Solana address (for redeem)
@@ -68,11 +70,11 @@ export class MineRoom extends Room<MineState> {
     this.state.cap = ORE_CAP;
 
     // zone selects which deterministic map to host; the client renders the SAME map (shared gen)
-    const zone = options?.zone === "cave" ? "cave" : "village";
-    const map = zone === "cave" ? gen.buildCave() : gen.buildVillage();
+    this.zone = options?.zone === "cave" ? "cave" : "village";
+    const map = this.zone === "cave" ? gen.buildCave() : gen.buildVillage();
     this.freeCells = map.freeCells;
     this.blocked = map.blocked;
-    console.log(`[room] zone=${zone} freeCells=${this.freeCells.length}`);
+    console.log(`[room] zone=${this.zone} freeCells=${this.freeCells.length}`);
 
     this.onMessage("move", (client, m: { x: number; y: number }) => this.onMove(client, m));
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));
@@ -104,7 +106,8 @@ export class MineRoom extends Room<MineState> {
     try { (await chain.recentTreasurySigs(25)).forEach((s) => this.seenDeposits.add(s)); }
     catch { /* RPC flaky at boot — watcher still needs a registered-wallet match to credit anything */ }
 
-    this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
+    const spawnMs = this.zone === "cave" ? 30_000 : SPAWN_INTERVAL; // cave spawns faster (every 30s)
+    this.clock.setInterval(() => this.spawnOre(), spawnMs);
     this.clock.setInterval(() => this.pollDeposits(), 15000); // auto-credit incoming deposits
     this.clock.setInterval(() => this.refreshTreasury(), 20000); // HUD treasury mirrors on-chain reserve
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
@@ -128,6 +131,12 @@ export class MineRoom extends Room<MineState> {
     // the signed message ends with a server-issued one-time nonce — consume it (replay protection)
     const nonce = (msg.trim().split("\n").pop() || "").trim();
     if (!consumeNonce(nonce)) throw new Error("login expired — reconnect");
+
+    // M5 cave = gated zone: only wallets holding ≥100 $HASHROCK on-chain may enter (verified live)
+    if (this.zone === "cave") {
+      const held = await chain.tokenBalance(addr);
+      if (held < CAVE_MIN_HOLD) throw new Error(`cave requires holding ≥${CAVE_MIN_HOLD} $HASHROCK (you hold ${Math.floor(held)})`);
+    }
 
     const playerId = addr;
     const name = (opts.name || "miner").slice(0, 16);

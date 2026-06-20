@@ -40,7 +40,9 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   try {
     net = await connect("miner", walletAddr, auth, zone); // identity = the signed-in wallet address
   } catch (e) {
-    toast("⚠ server offline — start: npm --prefix server run dev");
+    const m = (e as { message?: string })?.message || "";
+    // surface the real reason for gated/auth rejections (e.g. the cave $HASHROCK hold gate)
+    toast(/HASHROCK|cave|wallet|login|hold/i.test(m) ? "⚠ " + m : "⚠ server offline — start: npm --prefix server run dev");
     console.error("[net] connect failed", e);
     document.body.classList.remove("playing"); // back to landing
     return;
