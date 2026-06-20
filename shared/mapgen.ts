@@ -15,6 +15,7 @@ const FOREST_BAND = 15;
 export const T_GRASS = 0;
 export const T_DIRT = 1;
 export const T_WATER = 2;
+export const T_WALL = 3; // cave/dungeon wall — blocks the player + ore, rendered as a wall tile
 
 export enum PropType {
   TREE, BUSH, FLOWER, FERN, TUFT, ROCK, HOUSE, FENCE_H, FENCE_POST, SCARECROW, CROP, DECOR,
@@ -209,4 +210,95 @@ export function buildVillage(): VillageData {
     freeCells.push(i);
   }
   return { terrain, blocked, freeCells, props, decor, spawn };
+}
+
+// ───────────────────────── CAVE / DUNGEON ZONE (M5 themed mining zone) ─────────────────────────
+// A SEPARATE deterministic map (not the village): cellular-automata caverns of rock wall vs open
+// floor, guaranteed fully connected (flood-fill from the spawn room; unreachable pockets are
+// sealed so no ore is ever stranded). Same VillageData shape, so the server (freeCells) and the
+// client (render) consume it identically. Terrain: T_GRASS = floor (rendered with the cave floor
+// tileset), T_WALL = solid rock. Props: ROCK = boulders/stalagmites scattered on the floor.
+
+const FLOOR = T_GRASS; // floor reuses code 0; the zone's tileset decides how it looks
+
+export function buildCave(): VillageData {
+  const W = MAP_W, H = MAP_H, N = W * H;
+  const terrain = new Uint8Array(N);
+  const blocked = new Uint8Array(N);
+  const props: Placed[] = [];
+  const decor: Placed[] = [];
+  const C = { x: W >> 1, y: H >> 1 };
+  const border = (x: number, y: number) => x < 2 || y < 2 || x >= W - 2 || y >= H - 2;
+
+  // 1) deterministic initial fill — solid border + ~46% interior rock
+  let cur = new Uint8Array(N);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
+    cur[idx(x, y)] = border(x, y) ? 1 : (cellHash(x * 3 + 1, y * 3 + 7) < 0.46 ? 1 : 0);
+
+  // 2) cellular-automata smoothing → organic caverns (4-5-rule)
+  const wallNeighbours = (s: Uint8Array, x: number, y: number) => {
+    let c = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = x + dx, ny = y + dy;
+      c += !inB(nx, ny) ? 1 : s[idx(nx, ny)];
+    }
+    return c;
+  };
+  for (let it = 0; it < 5; it++) {
+    const next = new Uint8Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (border(x, y)) { next[idx(x, y)] = 1; continue; }
+      const n = wallNeighbours(cur, x, y);
+      next[idx(x, y)] = n >= 5 ? 1 : n <= 3 ? 0 : cur[idx(x, y)];
+    }
+    cur = next;
+  }
+
+  // 3) carve an open spawn room at the centre
+  for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++)
+    if (inB(C.x + dx, C.y + dy)) cur[idx(C.x + dx, C.y + dy)] = 0;
+
+  // reusable flood-fill: reachable open cells from spawn given a "blocked" predicate
+  const flood = (isBlocked: (i: number) => boolean): Uint8Array => {
+    const reach = new Uint8Array(N), s0 = idx(C.x, C.y);
+    if (isBlocked(s0)) return reach;
+    const stack = [s0]; reach[s0] = 1;
+    while (stack.length) {
+      const i = stack.pop()!, x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!inB(nx, ny)) continue;
+        const ni = idx(nx, ny);
+        if (!reach[ni] && !isBlocked(ni)) { reach[ni] = 1; stack.push(ni); }
+      }
+    }
+    return reach;
+  };
+
+  // 4) seal floor caverns not connected to spawn (one contiguous cave; no orphan rooms)
+  const reach1 = flood((i) => cur[i] === 1);
+  for (let i = 0; i < N; i++) if (!cur[i] && !reach1[i]) cur[i] = 1;
+
+  // 5) terrain
+  for (let i = 0; i < N; i++) {
+    if (cur[i]) { terrain[i] = T_WALL; blocked[i] = 1; }
+    else terrain[i] = FLOOR;
+  }
+  // scatter blocking boulders + non-blocking dressing on the floor (skip the spawn room)
+  for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+    const i = idx(x, y);
+    if (terrain[i] !== FLOOR) continue;
+    if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
+    const r = cellHash(x + 11, y + 5);
+    if (r < 0.02) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; }
+    else if (r < 0.07) decor.push({ gx: x, gy: y, type: PropType.TUFT, v: vh(x, y, 4) });
+  }
+
+  // 6) freeCells = floor reachable AFTER boulders (a boulder in a 1-wide gap can't strand ore)
+  const reach2 = flood((i) => blocked[i] === 1 || terrain[i] === T_WALL);
+  const freeCells: number[] = [];
+  for (let i = 0; i < N; i++) if (reach2[i] && terrain[i] === FLOOR && !blocked[i]) freeCells.push(i);
+
+  return { terrain, blocked, freeCells, props, decor, spawn: { gx: C.x, gy: C.y } };
 }
