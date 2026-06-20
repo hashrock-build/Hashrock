@@ -78,56 +78,86 @@ export class GroundLayer {
     }
   }
 
-  // M5 cave/dungeon ground: a stone floor with ORGANIC rock-wall edges. We reuse the proven
-  // dirt dual-grid autotiler (soft brown blob, no green/blue), treating WALL as the "dirt" and
-  // tinting it dark rock — so wall↔floor borders get rounded edges instead of hard squares, and
-  // it reads as rock (not a water pond). A dark vignette layer under the rim deepens the void.
+  // M5 cave/dungeon ground. The gameplay grid is 32px, but a hard 32px wall silhouette looks
+  // "kaku" (blocky staircases). So we render the walls on a SUPERSAMPLED, blurred mask: the wall
+  // boundary is evaluated on a 2× grid (16px) from a bilinear + box-blurred field and thresholded,
+  // which rounds corners and halves the step size. Floor stays cell-res. (Visual only — collision
+  // and ore still use the 32px cells; edges may differ by ≤16px, which is fine for decoration.)
   private buildCave(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
     const at = (gx: number, gy: number) => (gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_WALL);
-    const wallOn = (gx: number, gy: number) => (at(gx, gy) === T_WALL ? 1 : 0); // wall plays "dirt"
-    const RIM = 0x6a5640;   // warm rock-rim tint (multiplies the brown dirt edge tiles)
+    const RIM = 0x6a5640;   // warm rock-rim tint
     const FILL = 0x241d15;  // near-black rock interior
+
+    // ── supersampled + blurred wall field (rounded contours) ──
+    const S = 2, SUB = TILE / S, fw = mapW * S, fh = mapH * S;
+    const cellWall = (cx: number, cy: number) => (at(cx, cy) === T_WALL ? 1 : 0);
+    let field = new Float32Array(fw * fh);
+    for (let fy = 0; fy < fh; fy++) for (let fx = 0; fx < fw; fx++) {
+      const cx = (fx + 0.5) / S - 0.5, cy = (fy + 0.5) / S - 0.5;
+      const x0 = Math.floor(cx), y0 = Math.floor(cy), tx = cx - x0, ty = cy - y0;
+      field[fy * fw + fx] =
+        cellWall(x0, y0) * (1 - tx) * (1 - ty) + cellWall(x0 + 1, y0) * tx * (1 - ty) +
+        cellWall(x0, y0 + 1) * (1 - tx) * ty + cellWall(x0 + 1, y0 + 1) * tx * ty;
+    }
+    for (let pass = 0; pass < 3; pass++) { // box-blur → round the corners
+      const out = new Float32Array(fw * fh);
+      for (let fy = 0; fy < fh; fy++) for (let fx = 0; fx < fw; fx++) {
+        let s = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = fx + dx, ny = fy + dy;
+          s += (nx < 0 || ny < 0 || nx >= fw || ny >= fh) ? 1 : field[ny * fw + nx];
+        }
+        out[fy * fw + fx] = s / 9;
+      }
+      field = out;
+    }
+    const wall = new Uint8Array(fw * fh);
+    for (let i = 0; i < fw * fh; i++) wall[i] = field[i] >= 0.5 ? 1 : 0;
+    const w = (fx: number, fy: number) => (fx < 0 || fy < 0 || fx >= fw || fy >= fh ? 1 : wall[fy * fw + fx]);
+    const sig = (fdx: number, fdy: number) => DIRT_GMAP[`${w(fdx - 1, fdy - 1)}${w(fdx, fdy - 1)}${w(fdx - 1, fdy)}${w(fdx, fdy)}`];
+
     const cx0 = Math.ceil(mapW / CHUNK), cy0 = Math.ceil(mapH / CHUNK);
     for (let cy = 0; cy < cy0; cy++) {
       for (let cx = 0; cx < cx0; cx++) {
         const ox = cx * CHUNK, oy = cy * CHUNK;
         const c = new Container();
 
-        // stone floor base (every cell; per-cell noise so it isn't flat)
-        for (let gy = oy; gy < oy + CHUNK && gy < mapH; gy++) {
+        // stone floor base (cell res, per-cell noise)
+        for (let gy = oy; gy < oy + CHUNK && gy < mapH; gy++)
           for (let gx = ox; gx < ox + CHUNK && gx < mapW; gx++) {
             const s = new Sprite(g.caveFloor);
             s.x = (gx - ox) * TILE; s.y = (gy - oy) * TILE; s.setSize(TILE);
             const b = Math.round((0.5 + vnoise(gx, gy, 7, 3) * 0.22) * 255);
-            s.tint = (b << 16) | (b << 8) | b;
-            c.addChild(s);
+            s.tint = (b << 16) | (b << 8) | b; c.addChild(s);
           }
-        }
-        // solid dark fill under wall cells (so the void is opaque even where the blob is thin)
-        for (let gy = oy; gy < oy + CHUNK && gy < mapH; gy++) {
-          for (let gx = ox; gx < ox + CHUNK && gx < mapW; gx++) {
-            if (terrain[gy * mapW + gx] !== T_WALL) continue;
+
+        const fox = ox * S, foy = oy * S, fc = CHUNK * S;
+        // opaque dark interior — fine cells fully surrounded by wall
+        for (let fy = foy; fy < foy + fc && fy < fh; fy++)
+          for (let fx = fox; fx < fox + fc && fx < fw; fx++) {
+            if (!w(fx, fy) || !w(fx - 1, fy) || !w(fx + 1, fy) || !w(fx, fy - 1) || !w(fx, fy + 1)) continue;
             const s = new Sprite(g.caveFloor);
-            s.x = (gx - ox) * TILE; s.y = (gy - oy) * TILE; s.setSize(TILE);
-            s.tint = FILL;
-            c.addChild(s);
+            s.x = (fx - fox) * SUB; s.y = (fy - foy) * SUB; s.setSize(SUB);
+            s.tint = FILL; c.addChild(s);
           }
-        }
-        // wall rim via the dirt dual-grid (soft rounded brown edges), tinted to rock
-        for (let dy = oy; dy <= oy + CHUNK; dy++) {
-          for (let dx = ox; dx <= ox + CHUNK; dx++) {
-            const sig = `${wallOn(dx - 1, dy - 1)}${wallOn(dx, dy - 1)}${wallOn(dx - 1, dy)}${wallOn(dx, dy)}`;
-            const m = DIRT_GMAP[sig];
-            if (!m) continue; // "0000" → no wall here
-            const tex = m === "fill"
-              ? g.dirtFill[Math.floor(vnoise(dx, dy, 2, 9) * g.dirtFill.length) % g.dirtFill.length]
-              : g.dirtTile(m[0], m[1]);
-            const s = new Sprite(tex);
-            s.x = (dx - ox) * TILE - TILE / 2; s.y = (dy - oy) * TILE - TILE / 2; s.setSize(TILE);
-            s.tint = m === "fill" ? FILL : RIM;
-            c.addChild(s);
+        // dark boundary band (fine dual-grid edge tiles fade into the floor)
+        for (let fdy = foy; fdy <= foy + fc; fdy++)
+          for (let fdx = fox; fdx <= fox + fc; fdx++) {
+            const m = sig(fdx, fdy);
+            if (!m || m === "fill") continue;
+            const s = new Sprite(g.dirtTile(m[0], m[1]));
+            s.x = (fdx - fox) * SUB - SUB / 2; s.y = (fdy - foy) * SUB - SUB / 2; s.setSize(SUB);
+            s.tint = FILL; c.addChild(s);
           }
-        }
+        // subtle rocky rim highlight (semi-transparent, on the boundary)
+        for (let fdy = foy; fdy <= foy + fc; fdy++)
+          for (let fdx = fox; fdx <= fox + fc; fdx++) {
+            const m = sig(fdx, fdy);
+            if (!m || m === "fill") continue;
+            const s = new Sprite(g.dirtTile(m[0], m[1]));
+            s.x = (fdx - fox) * SUB - SUB / 2; s.y = (fdy - foy) * SUB - SUB / 2; s.setSize(SUB);
+            s.tint = RIM; s.alpha = 0.5; c.addChild(s);
+          }
 
         const rt = RenderTexture.create({ width: CHUNK * TILE, height: CHUNK * TILE });
         rt.source.scaleMode = "nearest";

@@ -316,14 +316,28 @@ export function buildCave(): VillageData {
     if (cur[i]) { terrain[i] = T_WALL; blocked[i] = 1; }
     else terrain[i] = FLOOR;
   }
-  // scatter blocking boulders + non-blocking dressing on the floor (skip the spawn room)
+  // scatter rock formations + pebble dressing on the floor (skip the spawn room).
+  // A boulder blocks its own cell; companion rocks are NON-blocking decor so a formation never
+  // seals a passage. Boulders cluster against walls (where stalagmites/rockfall collect).
+  const isWall = (x: number, y: number) => !inB(x, y) || cur[idx(x, y)] === 1;
   for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
     const i = idx(x, y);
     if (terrain[i] !== FLOOR) continue;
     if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
+    let nearWall = false;
+    for (let dy = -1; dy <= 1 && !nearWall; dy++) for (let dx = -1; dx <= 1; dx++) if (isWall(x + dx, y + dy)) nearWall = true;
     const r = cellHash(x + 11, y + 5);
-    // boulders/stalagmites only — no green tufts (this is a cave, not a meadow)
-    if (r < 0.025) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; }
+    if (r < (nearWall ? 0.05 : 0.022)) {
+      props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; // boulder
+      // companion rocks → a clustered formation (decor: non-blocking, so passages stay open)
+      for (const [dx, dy] of [[1, 0], [-1, 1], [1, 1]]) {
+        const cx2 = x + dx, cy2 = y + dy;
+        if (inB(cx2, cy2) && terrain[idx(cx2, cy2)] === FLOOR && cellHash(cx2 * 7, cy2 * 5) < 0.45)
+          decor.push({ gx: cx2, gy: cy2, type: PropType.ROCK, v: vh(cx2, cy2, 8) });
+      }
+    } else if (r < 0.10) {
+      decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // pebble / loose stone
+    }
   }
 
   // 6) freeCells = floor reachable AFTER boulders (a boulder in a 1-wide gap can't strand ore)
