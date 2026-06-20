@@ -27,7 +27,9 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://hashrock:${POSTGRES_PASSWORD}@db:5432/hashrock
+      # Prefer an explicit DATABASE_URL from .env (REQUIRED if the password has URL-special chars
+      # like @ : / — URL-encode them, e.g. @ → %40). Falls back to building it for simple passwords.
+      DATABASE_URL: ${DATABASE_URL:-postgres://hashrock:${POSTGRES_PASSWORD}@db:5432/hashrock}
       PORT: 2567
       POOL_SEED: ${POOL_SEED:-50000}
       DAILY_EMISSION: ${DAILY_EMISSION:-0.10}
@@ -39,6 +41,10 @@ services:
       BASE_MINE_TIME_SEC: ${BASE_MINE_TIME_SEC:-30}
       SPAWN_INTERVAL_SEC: ${SPAWN_INTERVAL_SEC:-60}
       SOLANA_RPC: ${SOLANA_RPC:?set SOLANA_RPC in .env}
+      SOLANA_CLUSTER: ${SOLANA_CLUSTER:-devnet}
+      # MUST match the on-chain mint (devnet legacy = 0, mainnet $HASHROCK = 6). initChain()
+      # hard-fails on mismatch, so a forgotten/wrong value safely refuses to boot.
+      TOKEN_DECIMALS: ${TOKEN_DECIMALS:-0}
       HASHROCK_MINT: ${HASHROCK_MINT:?set HASHROCK_MINT in .env}
       TREASURY_ADDRESS: ${TREASURY_ADDRESS:?set TREASURY_ADDRESS in .env}
       TREASURY_SECRET_PATH: /run/treasury/.treasury.json
