@@ -45,6 +45,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     if (zone === "cave" && /HASHROCK|hold/i.test(m)) {
       const sub = document.getElementById("gateSub"); if (sub) sub.textContent = m; // "you hold X"
       $("gateModal").classList.add("show");
+      history.replaceState({}, "", location.pathname); // drop ?zone=cave so the next Play = village
     } else {
       toast(/wallet|login|sign/i.test(m) ? "⚠ " + m : "⚠ server offline — start: npm --prefix server run dev");
     }
@@ -175,6 +176,14 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   };
   $("marketplace").addEventListener("click", () => { buildShop(); buildSkins(); showModal("marketModal"); mountPreview("pvMarket"); });
   $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
+
+  // zone portal: switch between the village and the gated cave (reload into the chosen zone).
+  // The cave needs ≥100 $HASHROCK — non-holders get the gate popup on connect.
+  const inCave = new URLSearchParams(location.search).get("zone") === "cave";
+  const zoneBtn = $("zoneBtn") as HTMLButtonElement;
+  zoneBtn.textContent = inCave ? "🏠 Village" : "⛏ Enter Cave";
+  zoneBtn.title = inCave ? "back to the village" : "enter the cave (holders only · ≥100 $HASHROCK)";
+  zoneBtn.addEventListener("click", () => { location.href = inCave ? location.pathname : "?zone=cave"; });
 
   // ---- modal helpers ----
   const showModal = (id: string) => $(id).classList.add("show");
