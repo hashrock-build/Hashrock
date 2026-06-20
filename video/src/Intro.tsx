@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  AbsoluteFill, Sequence, OffthreadVideo, staticFile,
+  AbsoluteFill, Sequence, OffthreadVideo, staticFile, Audio,
   useCurrentFrame, useVideoConfig, interpolate, spring,
 } from "remotion";
 import { TransitionSeries, linearTiming, springTiming } from "@remotion/transitions";
@@ -164,6 +164,7 @@ const CTAScene: React.FC = () => {
 export const Intro: React.FC = () => {
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg }}>
+      <Audio src={staticFile("music.wav")} volume={0.75} />
       <TransitionSeries>
         <TransitionSeries.Sequence durationInFrames={S_TITLE}><TitleScene /></TransitionSeries.Sequence>
         <TransitionSeries.Transition presentation={fade()} timing={linearTiming({ durationInFrames: XFADE })} />
