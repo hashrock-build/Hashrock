@@ -44,6 +44,7 @@ function adapt(g: gen.VillageData, P: WorldProps): Village {
     [gen.PropType.FENCE_H]: P.fenceH,
     [gen.PropType.FENCE_POST]: P.fencePost,
     [gen.PropType.SCARECROW]: P.scarecrow,
+    [gen.PropType.CAVE_DECOR]: P.caveDecor,
   };
   const resolve = (pl: gen.Placed): Placed => {
     const entry = lists[pl.type];

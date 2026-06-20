@@ -3,7 +3,7 @@
 // decor accessories. All are native-resolution pixel art drawn at scale 2 to match the
 // 16->32 tile pixels.
 
-import { Assets, Texture } from "pixi.js";
+import { Assets, Texture, Rectangle } from "pixi.js";
 
 export interface PropDef {
   texture: Texture;
@@ -12,6 +12,7 @@ export interface PropDef {
   anchorX: number;
   anchorY: number; // feet sit on the base row
   scale: number;
+  tint?: number; // optional recolour (e.g. glowing cave crystals)
 }
 
 export interface WorldProps {
@@ -27,6 +28,7 @@ export interface WorldProps {
   scarecrow: PropDef;
   crops: PropDef[];
   decor: PropDef[];
+  caveDecor: PropDef[]; // M5 cave flora/crystals — mushrooms + gems (sliced from Vegetation.png)
 }
 
 const SCALE = 2;
@@ -64,6 +66,18 @@ export async function loadProps(): Promise<WorldProps> {
   ]);
   const decor = await loadAll("decor", man.decor);
 
+  // M5 cave flora/crystals — sliced straight from the 16px Vegetation sheet (already in public).
+  const veg: Texture = await Assets.load("/assets/props/Vegetation.png");
+  veg.source.scaleMode = "nearest";
+  const vcut = (tx: number, ty: number) => new Texture({ source: veg.source, frame: new Rectangle(tx * 16, ty * 16, 16, 16) });
+  const caveDecor = [
+    def(vcut(1, 21), { anchorY: 0.85 }),                 // small mushroom
+    def(vcut(2, 21), { anchorY: 0.85 }),                 // mushroom
+    def(vcut(3, 21), { anchorY: 0.85 }),                 // big mushroom
+    def(vcut(0, 22), { anchorY: 0.8, tint: 0xc77dff }),  // amethyst crystal (red gem recoloured purple)
+    def(vcut(1, 22), { anchorY: 0.8 }),                  // blue crystal gem
+  ];
+
   cache = {
     trees: trees.map((t) => def(t, { anchorY: 0.95 })),
     bushes: bushFiles.map((t) => def(t, { anchorY: 0.88 })),
@@ -77,6 +91,7 @@ export async function loadProps(): Promise<WorldProps> {
     scarecrow: def(scarecrow, { anchorY: 0.92 }),
     crops: cropTex.map((t) => def(t, { anchorY: 0.8 })),
     decor: decor.map((t) => def(t, { anchorY: 0.88 })),
+    caveDecor,
   };
   return cache;
 }

@@ -19,6 +19,7 @@ export const T_WALL = 3; // cave/dungeon wall — blocks the player + ore, rende
 
 export enum PropType {
   TREE, BUSH, FLOWER, FERN, TUFT, ROCK, HOUSE, FENCE_H, FENCE_POST, SCARECROW, CROP, DECOR,
+  CAVE_DECOR, // M5 cave flora/crystals (mushrooms + gems)
 }
 
 export interface Placed { gx: number; gy: number; type: PropType; v: number; }
@@ -324,7 +325,8 @@ export function buildCave(): VillageData {
     if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
     const r = cellHash(x + 11, y + 5);
     if (r < 0.012) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder
-    else if (r < 0.03) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stone
+    else if (r < 0.025) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stone
+    else if (cellHash(x + 5, y + 17) < 0.02) decor.push({ gx: x, gy: y, type: PropType.CAVE_DECOR, v: vh(x, y, 6) }); // mushrooms / crystals
   }
 
   // 6) freeCells = floor reachable AFTER boulders (a boulder in a 1-wide gap can't strand ore)

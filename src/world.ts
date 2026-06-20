@@ -260,12 +260,14 @@ export class World {
     for (const p of this.village.props) {
       const s = new Sprite(p.def.texture);
       s.anchor.set(p.def.anchorX, p.def.anchorY); s.scale.set(p.def.scale); s.roundPixels = true;
+      if (p.def.tint !== undefined) s.tint = p.def.tint;
       s.x = (p.gx + p.def.footW / 2) * TILE; s.y = (p.gy + p.def.footH) * TILE; s.zIndex = s.y;
       this.entities.addChild(s);
     }
     for (const d of this.village.decor) {
       const s = new Sprite(d.def.texture);
       s.anchor.set(d.def.anchorX, d.def.anchorY); s.scale.set(d.def.scale); s.roundPixels = true;
+      if (d.def.tint !== undefined) s.tint = d.def.tint;
       s.x = (d.gx + 0.5) * TILE; s.y = (d.gy + 1) * TILE;
       this.decorLayer.addChild(s);
     }
