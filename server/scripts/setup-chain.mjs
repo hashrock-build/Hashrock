@@ -14,6 +14,13 @@ import fs from "fs";
 // On mainnet the deployer needs REAL SOL (no airdrop) and you must move the treasury to a
 // multisig afterwards — see MAINNET.md.
 const RPC = process.env.SOLANA_RPC || "https://api.devnet.solana.com";
+// SAFETY: $HASHROCK already exists on mainnet (launched on Orynth). This script creates a NEW
+// mint — running it on mainnet would create a worthless duplicate token. Refuse unless forced.
+if (RPC.includes("mainnet") && process.env.ALLOW_MAINNET_MINT !== "yes") {
+  console.error("REFUSING: mainnet $HASHROCK already exists (B4z8…ory). This script mints a NEW token.\n" +
+    "On mainnet you only fund the existing treasury — see MAINNET.md §C. (override: ALLOW_MAINNET_MINT=yes)");
+  process.exit(1);
+}
 const SUPPLY = Number(process.env.SUPPLY || 500_000); // fixed 500K, decimals 0 (devnet self-mint; mainnet launches on Orynth)
 const TREASURY_PATH = "./.treasury.json";
 const DEPLOY_PATH = process.env.DEPLOYER_KEYPAIR || `${process.env.HOME}/cora-deploy/keys/deploy-wallet.json`;

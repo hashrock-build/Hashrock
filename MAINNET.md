@@ -20,9 +20,11 @@ skip the 🔴 items. The economy is only as safe as its weakest accounting path 
   A captured signature can't be replayed (nonce already burned). (In-memory store — move to Redis
   if you run multiple server instances.)
 - 🟠 **Rate-limit** redeem/purchase/login per wallet + per IP; alert on anomalies.
-- 🟠 **Decimals decision is permanent.** Devnet uses **decimals 0** (1 token = 1 coin). If you want
-  fractional $HASHROCK on mainnet, choose decimals at mint time and update the coin↔token mapping
-  everywhere. You cannot change it later.
+- ✅ **Decimals handled (mainnet mint = decimals 6).** The mainnet $HASHROCK is **decimals 6**
+  (devnet legacy was 0). `chain.ts` now centralises raw↔coin conversion (`1 coin = 10**decimals
+  raw`): redeem/purchase multiply up, deposits floor down to whole coins. Set `TOKEN_DECIMALS=6`
+  in `.env`; `initChain()` reads the on-chain mint and **hard-fails on mismatch** so the server
+  can never run mis-scaled. (Verify with `node scripts/check-mint.mjs`.)
 - 🟢 Run `npm run build` (client) + `npm --prefix server run typecheck` clean; pin dependency
   versions (lockfiles committed).
 
@@ -33,26 +35,26 @@ skip the 🔴 items. The economy is only as safe as its weakest accounting path 
   read recent txs **and** land a test transfer (the Helius *devnet* node was desynced — confirm the
   mainnet one isn't: compare `getVersion` + look up a known recent signature).
 
-## C. Token mint (one-time)
+## C. Token mint (ALREADY DONE — do NOT re-mint)
 
-- A fresh **mainnet treasury keypair** is already generated:
-  - address **`M3pKAX6fJwNy4DVs5oh55FSegDoDoBJVyVkWF95wb1Q`**
-  - secret at `server/.treasury.mainnet.json` (chmod 600, gitignored). **Back this up offline.**
-  - env template ready at `server/.env.mainnet.example` (`TREASURY_SECRET_PATH=./.treasury.mainnet.json`).
-- 🔴 Fund a **deployer** wallet with real SOL (mint creation + ATA + fees ≈ a few cents, but no
-  airdrops on mainnet). Also send the treasury a little SOL for redeem priority fees.
-- Run the setup against mainnet (uses the mainnet treasury secret + deployer):
-  ```bash
-  cd server
-  cp .treasury.mainnet.json .treasury.json   # setup-chain.mjs mints to ./.treasury.json
-  SOLANA_RPC=<paid-mainnet-rpc> DEPLOYER_KEYPAIR=/path/to/funded.json \
-    node scripts/setup-chain.mjs
-  # then point the server at the mainnet secret (TREASURY_SECRET_PATH=./.treasury.mainnet.json)
-  ```
-  This mints the fixed **1B** supply (decimals 0) to the treasury and **burns the mint authority**
-  (fixed supply forever). Record `HASHROCK_MINT`, `TREASURY_ADDRESS`.
-- 🔴 **Verify on a mainnet explorer**: supply = 1B, mint authority = null (burned), decimals as
-  intended. This is irreversible — check before announcing.
+$HASHROCK is **already live on mainnet** (launched on Orynth). Do **not** run `setup-chain.mjs`
+(that creates a brand-new mint — for devnet self-mint only). Verified on-chain
+(`node scripts/check-mint.mjs`):
+- Mint (CA): **`B4z8tBZ7MmdQrGMuMx4wfKGSq1YLPwcfBixzUBLe9ory`**
+- supply ≈ **500K**, **mint authority = null (burned)** ✓ (fixed supply forever), **decimals = 6**,
+  freeze authority = null ✓.
+- Put it in `.env`: `HASHROCK_MINT=B4z8…ory`, `TOKEN_DECIMALS=6`, `SOLANA_CLUSTER=mainnet-beta`.
+
+Treasury wallet (the redeem signer / reserve holder):
+- A **fresh mainnet treasury keypair** is generated:
+  - address **`3cvBQmNZHDBo8XL6nT7YaqGYNzYSqRPVWbHvYPKdVvzL`**
+  - its $HASHROCK ATA (deposit target): **`14Y4UuZQBFbUgdUeuSsYR5BqYAsBnWiAANmSxdFnKgPS`**
+  - secret at `server/.treasury.mainnet.json` (chmod 600, gitignored). **🔴 Back this up offline.**
+- 🔴 **Fund the treasury** with the initial reserve: **20,000 $HASHROCK** (this is the backing —
+  `POOL_SEED` MUST be ≤ this, see §E) **plus a little SOL** (≈0.05) for redeem priority + new-ATA
+  rent. A standard wallet transfer auto-creates the ATA above.
+- 🔴 **Verify the funding** before launch: `OWNER=3cvB…vzL node scripts/check-mint.mjs` should show
+  the treasury balance = 20000 (× 10^6 raw). This is real value — check before announcing.
 
 ## D. Treasury security (invariant #5: treasury must NOT be arbitrarily withdrawable)
 
@@ -99,7 +101,8 @@ holds 1B is unacceptable for mainnet. Choose one:
 ---
 
 ### Flip-the-switch summary
-1. Ship code hardening (A). 2. Set paid mainnet `SOLANA_RPC` (B). 3. `setup-chain.mjs` on mainnet,
-verify mint (C). 4. Move treasury to multisig + hot float (D). 5. Economy sign-off + reconciliation
-job (E). 6. `.env` → mainnet values, `docker compose up -d --build`, verify (F). 7. Confirm art/legal
-(G). Only then announce.
+1. Ship code hardening (A) — incl. decimals-6 conversion. 2. Set paid mainnet `SOLANA_RPC` +
+`SOLANA_CLUSTER=mainnet-beta` (B). 3. Mint already exists — set `HASHROCK_MINT` + `TOKEN_DECIMALS=6`
+and **fund the treasury with 20,000 $HASHROCK** + SOL; verify (C). 4. Move bulk to multisig + hot
+float (D). 5. Economy sign-off + reconciliation job — `POOL_SEED=20000` ≤ treasury (E). 6. `.env` →
+mainnet values, `docker compose up -d --build`, verify (F). 7. Confirm art/legal (G). Only then announce.

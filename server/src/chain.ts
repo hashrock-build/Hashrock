@@ -1,9 +1,10 @@
-// On-chain bridge ($HASHROCK SPL on devnet, treasury = EOA). decimals 0 ⇒ 1 token == 1 coin.
+// On-chain bridge ($HASHROCK SPL, treasury = EOA). 1 in-game coin == 1 whole $HASHROCK; raw
+// on-chain units = coins × 10**decimals (devnet legacy mint = 0, mainnet = 6 — see TOKEN_DECIMALS).
 // Redeem: treasury sends $HASHROCK to the player. Deposit: verify a player's SPL transfer
 // INTO the treasury from its tx signature. The server holds the treasury secret (MVP; a
 // multisig/program replaces this at mainnet per invariant #5).
 import { Connection, Keypair, PublicKey, Transaction, ComputeBudgetProgram, TransactionInstruction } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddress, getAccount, createTransferInstruction } from "@solana/spl-token";
+import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddress, getAccount, createTransferInstruction, getMint } from "@solana/spl-token";
 import bs58 from "bs58";
 import fs from "fs";
 import crypto from "crypto";
@@ -17,11 +18,35 @@ const treasury = Keypair.fromSecretKey(
 
 let treasuryAta: PublicKey;
 
+// Token decimals: 1 in-game coin == 1 whole $HASHROCK == 10**decimals raw on-chain units.
+// The legacy devnet mint was decimals 0 (raw == coin); mainnet $HASHROCK is decimals 6. ALL
+// raw↔coin conversion lives here so the rest of the server stays in whole coins. Set
+// TOKEN_DECIMALS in .env; initChain() reads the real on-chain value and HARD-FAILS on a
+// mismatch (money safety — never run with the wrong scale).
+const ENV_DECIMALS = process.env.TOKEN_DECIMALS !== undefined ? Number(process.env.TOKEN_DECIMALS) : null;
+let decimals = ENV_DECIMALS ?? 0;
+let unitsPerCoin = 10 ** decimals;
+const toRaw = (coins: number): number => Math.round(coins * unitsPerCoin); // coins → raw units (coins are integers, so exact)
+const toCoins = (raw: number): number => raw / unitsPerCoin;               // raw → coins (may be fractional; floor before crediting)
+
 export async function initChain(): Promise<void> {
   // Derive the treasury ATA OFFLINE (no RPC) — it was already created during setup, so we
   // don't need the network at boot. Best-effort confirm it on-chain with a few retries, but
   // NEVER let a transient devnet 503 crash startup: gameplay must boot even if RPC is flaky.
   treasuryAta = await getAssociatedTokenAddress(mint, treasury.publicKey);
+  // Resolve token decimals from the on-chain mint (authoritative). HARD-FAIL on env mismatch;
+  // only fall back to the env/default if the RPC is unreachable (don't block boot on flaky RPC).
+  try {
+    const m = await getMint(conn, mint);
+    if (ENV_DECIMALS !== null && m.decimals !== ENV_DECIMALS)
+      throw new Error(`FATAL: TOKEN_DECIMALS=${ENV_DECIMALS} but on-chain mint decimals=${m.decimals} — refusing to run (would mis-scale every redeem/deposit)`);
+    decimals = m.decimals;
+    unitsPerCoin = 10 ** decimals;
+    console.log(`[chain] $HASHROCK decimals=${decimals} (1 coin = ${unitsPerCoin} raw units)`);
+  } catch (e) {
+    if ((e as Error).message.startsWith("FATAL")) throw e;
+    console.warn(`[chain] could not read mint decimals (${(e as Error).message}); using TOKEN_DECIMALS=${decimals}`);
+  }
   for (let i = 0; i < 4; i++) {
     try { const ata = await getOrCreateAssociatedTokenAccount(conn, treasury, mint, treasury.publicKey); treasuryAta = ata.address; return; }
     catch (e) {
@@ -52,7 +77,9 @@ export function blockhashValue(bh: string): number {
 
 export const treasuryAddress = (): string => treasury.publicKey.toBase58();
 export const mintAddress = (): string => mint.toBase58();
-export const explorer = (sig: string): string => `https://solscan.io/tx/${sig}?cluster=devnet`;
+const CLUSTER = process.env.SOLANA_CLUSTER || "devnet"; // "mainnet-beta" on mainnet (Solscan omits the param for mainnet)
+export const explorer = (sig: string): string =>
+  CLUSTER.startsWith("mainnet") ? `https://solscan.io/tx/${sig}` : `https://solscan.io/tx/${sig}?cluster=${CLUSTER}`;
 export function isValidAddress(s: string): boolean { try { new PublicKey(s); return true; } catch { return false; } }
 
 /** Verify a wallet signed `message`, proving ownership of `address` (a Solana ed25519 pubkey).
@@ -69,16 +96,16 @@ export function verifyWalletSig(address: string, message: string, sigB64: string
   } catch { return false; }
 }
 
-/** On-chain $HASHROCK balance held by the treasury (the real reserve, shown in the HUD). */
+/** On-chain $HASHROCK balance held by the treasury, in coins (the real reserve, shown in the HUD). */
 export async function treasuryBalance(): Promise<number> {
-  try { return Number((await getAccount(conn, treasuryAta)).amount); } catch { return 0; }
+  try { return toCoins(Number((await getAccount(conn, treasuryAta)).amount)); } catch { return 0; }
 }
 
-/** On-chain $HASHROCK balance of an address (0 if no token account yet). */
+/** On-chain $HASHROCK balance of an address in coins (0 if no token account yet). */
 export async function tokenBalance(address: string): Promise<number> {
   try {
     const ata = await getAssociatedTokenAddress(mint, new PublicKey(address));
-    return Number((await getAccount(conn, ata)).amount);
+    return toCoins(Number((await getAccount(conn, ata)).amount));
   } catch { return 0; }
 }
 
@@ -120,7 +147,7 @@ async function treasurySend(instructions: TransactionInstruction[], hardCapMs = 
 export async function redeemTo(dest: string, amount: number): Promise<string> {
   const destPk = new PublicKey(dest);
   const destAta = await getOrCreateAssociatedTokenAccount(conn, treasury, mint, destPk); // treasury pays rent if new
-  return treasurySend([createTransferInstruction(treasuryAta, destAta.address, treasury.publicKey, amount)]);
+  return treasurySend([createTransferInstruction(treasuryAta, destAta.address, treasury.publicKey, toRaw(amount))]);
 }
 
 /** Build an UNSIGNED $HASHROCK transfer (payer → treasury) for the client to sign with the
@@ -128,7 +155,7 @@ export async function redeemTo(dest: string, amount: number): Promise<string> {
 export async function buildPurchaseTx(payer: string, amount: number): Promise<string> {
   const payerPk = new PublicKey(payer);
   const payerAta = await getAssociatedTokenAddress(mint, payerPk);
-  const tx = new Transaction().add(createTransferInstruction(payerAta, treasuryAta, payerPk, amount));
+  const tx = new Transaction().add(createTransferInstruction(payerAta, treasuryAta, payerPk, toRaw(amount)));
   tx.feePayer = payerPk;
   tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
   return tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
@@ -162,8 +189,10 @@ export async function verifyDeposit(sig: string): Promise<{ amount: number; sour
   const post = tx.meta?.postTokenBalances ?? [];
   const before = Number(pre.find((b) => isMint(b) && acct(b) === treasuryAtaStr)?.uiTokenAmount.amount ?? 0);
   const after = Number(post.find((b) => isMint(b) && acct(b) === treasuryAtaStr)?.uiTokenAmount.amount ?? 0);
-  const amount = after - before;
-  if (amount <= 0) return null;
+  const rawDelta = after - before;
+  if (rawDelta <= 0) return null;
+  const amount = Math.floor(toCoins(rawDelta)); // raw → whole coins (floor: never credit more than backed; dust stays as treasury reserve)
+  if (amount <= 0) return null;                  // sub-1-coin dust deposit
   const source = pre.find((b) => isMint(b) && acct(b) !== treasuryAtaStr)?.owner ?? "unknown";
   return { amount, source };
 }
