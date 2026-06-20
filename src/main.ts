@@ -175,7 +175,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     });
   };
   $("marketplace").addEventListener("click", () => { buildShop(); buildSkins(); showModal("marketModal"); mountPreview("pvMarket"); });
-  $("otc").addEventListener("click", () => toast("🤝 OTC Market — planned"));
+  $("otc").addEventListener("click", () => { showModal("otcModal"); net!.room.send("listings"); buildOtcSell(); });
 
   // zone portal: switch between the village and the gated cave (reload into the chosen zone).
   // The cave needs ≥100 $HASHROCK — non-holders get the gate popup on connect.
@@ -188,12 +188,13 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   // ---- modal helpers ----
   const showModal = (id: string) => $(id).classList.add("show");
   const closeModal = (id: string) => $(id).classList.remove("show");
-  for (const id of ["profileModal", "redeemModal", "marketModal", "redeemDoneModal", "buyDoneModal", "upgradeModal"]) {
+  for (const id of ["profileModal", "redeemModal", "marketModal", "redeemDoneModal", "buyDoneModal", "upgradeModal", "otcModal"]) {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) closeModal(id); });
   }
   $("profileClose").addEventListener("click", () => closeModal("profileModal"));
   $("redeemClose").addEventListener("click", () => closeModal("redeemModal"));
   $("marketClose").addEventListener("click", () => closeModal("marketModal"));
+  $("otcClose").addEventListener("click", () => closeModal("otcModal"));
   $("redeemDoneClose").addEventListener("click", () => closeModal("redeemDoneModal"));
   $("buyDoneClose").addEventListener("click", () => closeModal("buyDoneModal"));
   $("upgradeClose").addEventListener("click", () => closeModal("upgradeModal"));
@@ -256,7 +257,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   net.room.onMessage("redeemErr", (m: { msg: string }) => { ($("redeemconfirm") as HTMLButtonElement).disabled = false; toast("⚠ redeem: " + m.msg); });
 
   // on-chain purchase (axe / color skin / repair): server builds tx → wallet signs+sends → server verifies + grants
-  net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; skin?: number; tier?: number; price: number; tx: string }) => {
+  net.room.onMessage("purchaseTx", async (m: { kind: string; axe?: number; skin?: number; tier?: number; listingId?: number; price: number; tx: string }) => {
     try {
       toast("approve the payment in your wallet…");
       const sig = await signAndSend(m.tx);
@@ -264,6 +265,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
       if (m.kind === "repair") net!.room.send("confirmRepair", { sig });
       else if (m.kind === "skin") net!.room.send("confirmSkinPurchase", { skin: m.skin, sig });
       else if (m.kind === "upgrade") net!.room.send("confirmAxeUpgrade", { tier: m.tier, sig });
+      else if (m.kind === "market") net!.room.send("confirmMarketBuy", { id: m.listingId, sig });
       else net!.room.send("confirmAxePurchase", { axe: m.axe, sig });
     } catch (e) { toast("cancelled"); console.error(e); }
   });
@@ -284,6 +286,62 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     showBuyDone("🔧", "✅ Axe Repaired", "durability restored to 100%", m.url);
   });
   net.room.onMessage("buyErr", (m: { msg: string }) => toast("⚠ " + m.msg));
+
+  // ---- P2P marketplace ----
+  interface Listing { id: number; sellerId: string; sellerName: string; kind: string; item: number; price: number; }
+  const itemMeta = (kind: string, id: number): { name: string; color: string } =>
+    kind === "axe"
+      ? { name: AXES[id]?.name ?? "?", color: AXES[id]?.color ?? "#fff" }
+      : { name: SKINS[id]?.name ?? "?", color: RARITY_COLOR[SKINS[id]?.rarity ?? "Common"] };
+
+  net.room.onMessage("marketErr", (m: { msg: string }) => toast("⚠ " + m.msg));
+  net.room.onMessage("listed", () => { toast("📦 item listed"); buildOtcSell(); });
+  net.room.onMessage("marketSold", (m: { kind: string; item: number; price: number }) => {
+    toast(`💰 sold your ${itemMeta(m.kind, m.item).name} for ${m.price} $HASHROCK`);
+    buildPickers(); buildShop(); buildSkins(); buildOtcSell();
+  });
+  net.room.onMessage("marketOk", (m: { kind: string; item: number; url: string }) => {
+    const it = itemMeta(m.kind, m.item);
+    buildPickers(); buildShop(); buildSkins(); updatePreview(); buildOtcSell();
+    showBuyDone(m.kind === "axe" ? "⛏" : "🎨", "✅ Bought (P2P)", `${it.name} is now yours`, m.url);
+  });
+  net.room.onMessage("listings", (list: Listing[]) => {
+    const box = $("otcList"); box.innerHTML = "";
+    if (!list.length) { box.innerHTML = '<div class="prow dim">no active listings</div>'; return; }
+    for (const L of list) {
+      const it = itemMeta(L.kind, L.item), mine = L.sellerId === walletAddr;
+      const row = document.createElement("div"); row.className = "prow";
+      const info = document.createElement("span");
+      info.innerHTML = `<span style="color:${it.color}">${L.kind === "axe" ? "⛏" : "🎨"} ${it.name}</span> &nbsp;<b>${L.price}</b> <span class="dim">$HASHROCK · ${mine ? "you" : L.sellerName}</span>`;
+      const btn = document.createElement("button");
+      btn.textContent = mine ? "Cancel" : "Buy"; if (!mine) btn.className = "ghost";
+      btn.addEventListener("click", () => { net!.room.send(mine ? "cancelListing" : "buildMarketBuy", { id: L.id }); if (mine) toast("cancelling…"); });
+      row.append(info, btn); box.appendChild(row);
+    }
+  });
+
+  function buildOtcSell(): void {
+    const box = $("otcSell"); box.innerHTML = "";
+    const mine: Array<{ kind: string; id: number }> = [];
+    AXES.forEach((a) => { if (a.id > 0 && (world.axesOwned & (1 << a.id))) mine.push({ kind: "axe", id: a.id }); });
+    SKINS.forEach((s) => { if (s.id > 0 && (world.skinsOwned & (1 << s.id))) mine.push({ kind: "skin", id: s.id }); });
+    if (!mine.length) { box.innerHTML = '<div class="prow dim">no sellable items yet — buy an axe or skin first</div>'; return; }
+    for (const m of mine) {
+      const it = itemMeta(m.kind, m.id);
+      const row = document.createElement("div"); row.className = "prow";
+      const info = document.createElement("span");
+      info.innerHTML = `<span style="color:${it.color}">${m.kind === "axe" ? "⛏" : "🎨"} ${it.name}</span>`;
+      const price = document.createElement("input");
+      price.type = "number"; price.min = "1"; price.placeholder = "$HASHROCK"; price.style.width = "100px";
+      const btn = document.createElement("button"); btn.textContent = "List";
+      btn.addEventListener("click", () => {
+        const p = Math.floor(Number(price.value));
+        if (!(p > 0)) return void toast("set a price");
+        net!.room.send("listItem", { kind: m.kind, item: m.id, price: p });
+      });
+      row.append(info, price, btn); box.appendChild(row);
+    }
+  }
 
   $("repair").addEventListener("click", () => {
     if (world.durability >= 100) return void toast("axe already at full durability");

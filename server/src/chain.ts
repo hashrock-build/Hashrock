@@ -4,7 +4,7 @@
 // INTO the treasury from its tx signature. The server holds the treasury secret (MVP; a
 // multisig/program replaces this at mainnet per invariant #5).
 import { Connection, Keypair, PublicKey, Transaction, ComputeBudgetProgram, TransactionInstruction } from "@solana/web3.js";
-import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddress, getAccount, createTransferInstruction, getMint } from "@solana/spl-token";
+import { getOrCreateAssociatedTokenAccount, getAssociatedTokenAddress, getAccount, createTransferInstruction, createAssociatedTokenAccountIdempotentInstruction, getMint } from "@solana/spl-token";
 import bs58 from "bs58";
 import fs from "fs";
 import crypto from "crypto";
@@ -159,6 +159,47 @@ export async function buildPurchaseTx(payer: string, amount: number): Promise<st
   tx.feePayer = payerPk;
   tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
   return tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+}
+
+/** P2P marketplace: build ONE unsigned tx where the BUYER pays the seller (price−fee) directly
+ *  AND the fee into the treasury — atomic (both transfers in one tx or none). Creates the seller's
+ *  token account if missing (buyer pays its rent). Buyer signs+sends; verify with verifyMarketTx. */
+export async function buildMarketTx(buyer: string, seller: string, sellerAmount: number, fee: number): Promise<string> {
+  const buyerPk = new PublicKey(buyer), sellerPk = new PublicKey(seller);
+  const buyerAta = await getAssociatedTokenAddress(mint, buyerPk);
+  const sellerAta = await getAssociatedTokenAddress(mint, sellerPk);
+  const tx = new Transaction().add(
+    createAssociatedTokenAccountIdempotentInstruction(buyerPk, sellerAta, sellerPk, mint), // buyer pays seller-ATA rent if new
+    createTransferInstruction(buyerAta, sellerAta, buyerPk, toRaw(sellerAmount)),
+    createTransferInstruction(buyerAta, treasuryAta, buyerPk, toRaw(fee)),
+  );
+  tx.feePayer = buyerPk;
+  tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+  return tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
+}
+
+/** Verify a confirmed market tx really paid the seller (≥ sellerAmount) AND the treasury (≥ fee).
+ *  Returns the buyer (source) on success, else null. Amounts are coins; compared in raw units. */
+export async function verifyMarketTx(sig: string, seller: string, sellerAmount: number, fee: number): Promise<{ buyer: string } | null> {
+  try { if (!sig || bs58.decode(sig).length !== 64) return null; } catch { return null; }
+  const tx = await conn.getParsedTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+  if (!tx || tx.meta?.err) return null;
+  const keys = tx.transaction.message.accountKeys.map((k) => k.pubkey.toBase58());
+  const mintStr = mint.toBase58();
+  const sellerAtaStr = (await getAssociatedTokenAddress(mint, new PublicKey(seller))).toBase58();
+  const treasuryAtaStr = treasuryAta.toBase58();
+  const pre = tx.meta?.preTokenBalances ?? [], post = tx.meta?.postTokenBalances ?? [];
+  const acct = (b: { accountIndex: number }) => keys[b.accountIndex];
+  const isMint = (b: { mint: string }) => b.mint === mintStr;
+  const delta = (ataStr: string) => {
+    const before = Number(pre.find((b) => isMint(b) && acct(b) === ataStr)?.uiTokenAmount.amount ?? 0);
+    const after = Number(post.find((b) => isMint(b) && acct(b) === ataStr)?.uiTokenAmount.amount ?? 0);
+    return after - before;
+  };
+  if (delta(sellerAtaStr) < toRaw(sellerAmount)) return null; // seller got paid
+  if (delta(treasuryAtaStr) < toRaw(fee)) return null;        // fee reached the treasury
+  const source = pre.find((b) => isMint(b) && acct(b) !== sellerAtaStr && acct(b) !== treasuryAtaStr)?.owner ?? "unknown";
+  return { buyer: source };
 }
 
 /** verifyDeposit with retry, since a freshly-sent tx may not be confirmed yet. */

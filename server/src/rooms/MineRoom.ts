@@ -25,6 +25,7 @@ const DAILY_EMISSION = Number(process.env.DAILY_EMISSION ?? 0.1);
 const ORE_PER_DAY = Number(process.env.ORE_PER_DAY ?? 1440);
 const REWARD_FLOOR = Number(process.env.REWARD_FLOOR ?? 1);
 const CREATOR_FEE = Number(process.env.CREATOR_FEE ?? 0.05);
+const MARKET_FEE = Number(process.env.MARKET_FEE ?? 0.05); // P2P marketplace fee (of sale price) → sink
 const BASE_MINE_TIME = Number(process.env.BASE_MINE_TIME_SEC ?? 30);
 const SPAWN_INTERVAL = Number(process.env.SPAWN_INTERVAL_SEC ?? 60) * 1000;
 const CAVE_MIN_HOLD = Number(process.env.CAVE_MIN_HOLD ?? 100); // $HASHROCK gate to enter the cave zone
@@ -32,7 +33,7 @@ const UPGRADE_COST = 500; // DEMO sink (coins). Real upgrades = on-chain $HASHRO
 const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
 const DUR_PER_ORE = 2;     // axe durability lost per ore fully mined
 const DUR_PENALTY = 0.35;  // throughput multiplier when durability hits 0
-const REPAIR_COST = 250;   // $HASHROCK to fully repair (sink → 95% pool / 5% creator)
+const REPAIR_COST = Number(process.env.REPAIR_COST ?? 100); // $HASHROCK to fully repair (sink → 95% pool / 5% creator)
 const REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY;
 const MINE_RANGE = TILE * 1.6;
 const MOVE_SPEED = 130; // px/s — server validates client moves against this (+ tolerance)
@@ -98,6 +99,12 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("getHashrock", (client) => this.sendHashrock(client));
     this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
+    // P2P marketplace
+    this.onMessage("listings", (client) => this.sendListings(client));
+    this.onMessage("listItem", (client, m: { kind: string; item: number; price: number }) => this.onListItem(client, m));
+    this.onMessage("cancelListing", (client, m: { id: number }) => this.onCancelListing(client, m));
+    this.onMessage("buildMarketBuy", (client, m: { id: number }) => this.onBuildMarketBuy(client, m));
+    this.onMessage("confirmMarketBuy", (client, m: { id: number; sig: string }) => this.onConfirmMarketBuy(client, m));
 
     // Pre-seed the deposit watcher with the treasury's pre-existing txs (e.g. the initial reserve
     // funding) so they can NEVER be mis-credited to a player who later registers the funding
@@ -271,6 +278,79 @@ export class MineRoom extends Room<MineState> {
       client.send("buyOk", { axe, sig, url: chain.explorer(sig) });
       this.sendHashrock(client);
     } catch (e) { client.send("buyErr", { msg: "purchase verify failed" }); console.error("[buy]", e); }
+  }
+
+  // ───────── P2P marketplace (server-authoritative listings, on-chain settlement) ─────────
+  private async sendListings(client: Client): Promise<void> { client.send("listings", await db.activeListings()); }
+  private broadcastListings(): void { db.activeListings().then((l) => this.broadcast("listings", l)).catch(() => {}); }
+
+  private async onListItem(client: Client, m: { kind: string; item: number; price: number }): Promise<void> {
+    const playerId = this.pid.get(client.sessionId);
+    if (!playerId) return;
+    const kind = m?.kind === "axe" ? "axe" : "skin";
+    const item = Math.floor(m?.item ?? 0), price = Math.floor(m?.price ?? 0);
+    if (!(price > 0) || price > 1e9) return void client.send("marketErr", { msg: "invalid price" });
+    const r = await db.createListing(playerId, kind, item, price);
+    if ("err" in r) return void client.send("marketErr", { msg: r.err });
+    client.send("listed", { id: r.id });
+    this.broadcastListings();
+  }
+
+  private async onCancelListing(client: Client, m: { id: number }): Promise<void> {
+    const playerId = this.pid.get(client.sessionId);
+    if (!playerId) return;
+    await db.cancelListing(Math.floor(m?.id ?? 0), playerId);
+    this.broadcastListings();
+  }
+
+  // Step 1: build the buyer-signed tx (pays seller price−fee + fee to treasury, atomic).
+  private async onBuildMarketBuy(client: Client, m: { id: number }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId), playerId = this.pid.get(client.sessionId);
+    if (!p || !dest || !playerId) return void client.send("marketErr", { msg: "connect your wallet first" });
+    const listing = await db.getActiveListing(Math.floor(m?.id ?? 0));
+    if (!listing) return void client.send("marketErr", { msg: "listing no longer available" });
+    if (listing.sellerId === playerId) return void client.send("marketErr", { msg: "that's your own listing" });
+    const owned = listing.kind === "axe" ? p.axesOwned : p.skinsOwned;
+    if (owned & (1 << listing.item)) return void client.send("marketErr", { msg: "you already own that item" });
+    const fee = Math.floor(listing.price * MARKET_FEE), sellerAmount = listing.price - fee;
+    try {
+      const tx = await chain.buildMarketTx(dest, listing.sellerId, sellerAmount, fee);
+      client.send("purchaseTx", { kind: "market", listingId: listing.id, price: listing.price, tx });
+    } catch (e) { client.send("marketErr", { msg: "need $HASHROCK in your wallet" }); console.error("[market]", e); }
+  }
+
+  // Step 2: verify the confirmed tx paid seller + treasury → transfer the item + route the fee.
+  private async onConfirmMarketBuy(client: Client, m: { id: number; sig: string }): Promise<void> {
+    const p = this.state.players.get(client.sessionId);
+    const dest = this.wallet.get(client.sessionId), playerId = this.pid.get(client.sessionId);
+    const sig = (m?.sig ?? "").trim();
+    if (!p || !dest || !playerId || !sig) return void client.send("marketErr", { msg: "bad request" });
+    const listing = await db.getActiveListing(Math.floor(m?.id ?? 0));
+    if (!listing) return void client.send("marketErr", { msg: "listing already sold/cancelled" });
+    const fee = Math.floor(listing.price * MARKET_FEE), sellerAmount = listing.price - fee, cut = Math.round(fee * CREATOR_FEE);
+    try {
+      const v = await chain.verifyMarketTx(sig, listing.sellerId, sellerAmount, fee);
+      if (!v || v.buyer !== dest) return void client.send("marketErr", { msg: "payment not verified" });
+      const r = await db.settleMarketSale(listing.id, playerId, fee, cut, sig);
+      if (!r.ok) return void client.send("marketErr", { msg: r.reason || "settle failed" });
+      const bit = 1 << listing.item;
+      if (listing.kind === "axe") p.axesOwned |= bit; else p.skinsOwned |= bit;
+      this.state.pool += fee - cut; this.state.creator += cut; this.refreshTreasury();
+      // reflect the loss on the seller's live state if they're online
+      const sellSid = [...this.pid.entries()].find(([, pid]) => pid === listing.sellerId)?.[0];
+      if (sellSid) {
+        const sp = this.state.players.get(sellSid);
+        if (sp) {
+          if (listing.kind === "axe") { sp.axesOwned &= ~bit; if (sp.axe === listing.item) sp.axe = 0; }
+          else { sp.skinsOwned &= ~bit; if (sp.skin === listing.item) sp.skin = 0; }
+        }
+        this.clients.find((c) => c.sessionId === sellSid)?.send("marketSold", { kind: listing.kind, item: listing.item, price: listing.price });
+      }
+      client.send("marketOk", { sig, url: chain.explorer(sig), kind: listing.kind, item: listing.item });
+      this.sendHashrock(client);
+      this.broadcastListings();
+    } catch (e) { client.send("marketErr", { msg: "purchase verify failed" }); console.error("[market]", e); }
   }
 
   // On-chain COLOR-SKIN purchase. Step 1: build the $HASHROCK transfer for the wallet to sign.

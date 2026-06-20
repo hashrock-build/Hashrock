@@ -55,6 +55,19 @@ export async function initSchema(seedPool: number): Promise<void> {
     WHERE p.axes_owned = 1`);
   // per-tier axe levels, packed 4 bits/tier (0 = level 1); upgraded on-chain
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS axe_levels INT NOT NULL DEFAULT 0`);
+  // P2P marketplace listings (item DATA off-chain/server-authoritative; settlement on-chain)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS listings (
+      id         BIGSERIAL PRIMARY KEY,
+      seller_id  TEXT NOT NULL,
+      kind       TEXT NOT NULL,                       -- 'axe' | 'skin'
+      item       INT  NOT NULL,                       -- tier / skin id
+      price      BIGINT NOT NULL CHECK (price > 0),   -- $HASHROCK
+      status     TEXT NOT NULL DEFAULT 'active',      -- active | sold | cancelled
+      buyer_id   TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS listings_one_active ON listings (seller_id, kind, item) WHERE status = 'active'`);
   // seed economy: pool = seed, treasury backs it 1:1 (= seed), creator = 0
   await pool.query(
     `INSERT INTO economy (id, pool, creator, treasury) VALUES (1, $1, 0, $1)
@@ -208,6 +221,77 @@ export async function persistUpgrade(playerId: string, cost: number, cut: number
 }
 
 /** Audit: total coins in existence must equal the treasury backing. */
+// ───────────────────────── P2P MARKETPLACE ─────────────────────────
+export interface Listing { id: number; sellerId: string; sellerName: string; kind: string; item: number; price: number; }
+const ownCol = (kind: string) => (kind === "axe" ? "axes_owned" : "skins_owned");
+const equipCol = (kind: string) => (kind === "axe" ? "axe" : "skin");
+
+/** List an owned item (not the free id-0 starter) for sale. Returns the new listing id, or an
+ *  error string. Server-authoritative: verifies ownership; the unique index blocks double-listing. */
+export async function createListing(sellerId: string, kind: string, item: number, price: number): Promise<{ id: number } | { err: string }> {
+  if (kind !== "axe" && kind !== "skin") return { err: "bad item kind" };
+  if (item <= 0) return { err: "the free starter can't be sold" };
+  if (!(price > 0)) return { err: "price must be > 0" };
+  const { rows } = await pool.query(`SELECT ${ownCol(kind)} AS owned FROM players WHERE id = $1`, [sellerId]);
+  if (!rows.length || !((n(rows[0].owned) >> item) & 1)) return { err: "you don't own that item" };
+  try {
+    const r = await pool.query(`INSERT INTO listings (seller_id, kind, item, price) VALUES ($1,$2,$3,$4) RETURNING id`, [sellerId, kind, item, price]);
+    return { id: n(r.rows[0].id) };
+  } catch { return { err: "already listed" }; }
+}
+
+export async function cancelListing(id: number, sellerId: string): Promise<boolean> {
+  const r = await pool.query(`UPDATE listings SET status='cancelled' WHERE id=$1 AND seller_id=$2 AND status='active'`, [id, sellerId]);
+  return !!r.rowCount;
+}
+
+export async function activeListings(): Promise<Listing[]> {
+  const { rows } = await pool.query(
+    `SELECT l.id, l.seller_id, COALESCE(p.name,'miner') AS seller_name, l.kind, l.item, l.price
+     FROM listings l LEFT JOIN players p ON p.id = l.seller_id
+     WHERE l.status='active' ORDER BY l.id DESC LIMIT 100`);
+  return rows.map((r) => ({ id: n(r.id), sellerId: r.seller_id, sellerName: r.seller_name, kind: r.kind, item: n(r.item), price: n(r.price) }));
+}
+
+export async function getActiveListing(id: number): Promise<Listing | null> {
+  const { rows } = await pool.query(`SELECT id, seller_id, kind, item, price FROM listings WHERE id=$1 AND status='active'`, [id]);
+  if (!rows.length) return null;
+  const r = rows[0];
+  return { id: n(r.id), sellerId: r.seller_id, sellerName: "", kind: r.kind, item: n(r.item), price: n(r.price) };
+}
+
+/** Settle a confirmed P2P sale: the buyer already paid the seller (price−fee) wallet-to-wallet and
+ *  the fee into the treasury ON-CHAIN (verified by the caller). Here we only move the item + route
+ *  the fee as a sink (95% pool / 5% creator). Transactional, sig-deduped, ownership re-checked. */
+export async function settleMarketSale(listingId: number, buyerId: string, fee: number, cut: number, sig: string): Promise<{ ok: boolean; reason?: string }> {
+  const dup = await pool.query(`SELECT 1 FROM ledger WHERE meta->>'sig' = $1 LIMIT 1`, [sig]);
+  if (dup.rowCount) return { ok: false, reason: "already settled" };
+  const c = await pool.connect();
+  try {
+    await c.query("BEGIN");
+    const lr = await c.query(`SELECT seller_id, kind, item, price FROM listings WHERE id=$1 AND status='active' FOR UPDATE`, [listingId]);
+    if (!lr.rowCount) { await c.query("ROLLBACK"); return { ok: false, reason: "listing gone" }; }
+    const { seller_id: seller, kind, item, price } = lr.rows[0];
+    const own = ownCol(kind), eq = equipCol(kind), bit = 1 << n(item);
+    const sown = n((await c.query(`SELECT ${own} AS o FROM players WHERE id=$1`, [seller])).rows[0]?.o ?? 0);
+    if (!(sown & bit)) { await c.query("ROLLBACK"); return { ok: false, reason: "seller no longer owns it" }; }
+    if (seller === buyerId) { await c.query("ROLLBACK"); return { ok: false, reason: "cannot buy your own listing" }; }
+    // seller loses the item (+ unequip if equipped); axe level for that tier resets
+    await c.query(`UPDATE players SET ${own} = ${own} & ~$2, ${eq} = CASE WHEN ${eq} = $3 THEN 0 ELSE ${eq} END WHERE id=$1`, [seller, bit, n(item)]);
+    if (kind === "axe") await c.query(`UPDATE players SET axe_levels = axe_levels & ~($2::int) WHERE id=$1`, [seller, 0xf << (n(item) * 4)]);
+    // buyer gains the item
+    await c.query(`UPDATE players SET ${own} = ${own} | $2 WHERE id=$1`, [buyerId, bit]);
+    // fee is a sink → treasury += fee, pool += 95%, creator += 5% (seller's portion was paid P2P on-chain, not here)
+    await c.query(`UPDATE economy SET treasury = treasury + $1, pool = pool + $2, creator = creator + $3 WHERE id=1`, [fee, fee - cut, cut]);
+    await c.query(`UPDATE listings SET status='sold', buyer_id=$2 WHERE id=$1`, [listingId, buyerId]);
+    await c.query(`INSERT INTO ledger (kind, player_id, amount, pool_delta, creator_delta, treasury_delta, meta) VALUES ('market_sale',$1,0,$2,$3,$4,$5)`,
+      [buyerId, fee - cut, cut, fee, JSON.stringify({ sig, listingId, kind, item: n(item), price: n(price), seller, buyer: buyerId, fee })]);
+    await c.query("COMMIT");
+    return { ok: true };
+  } catch (e) { await c.query("ROLLBACK").catch(() => {}); return { ok: false, reason: (e as Error).message }; }
+  finally { c.release(); }
+}
+
 export async function verifyInvariant(): Promise<{ ok: boolean; coins: number; treasury: number }> {
   const { rows } = await pool.query(
     `SELECT (SELECT COALESCE(SUM(coins),0) FROM players) AS pc, pool, creator, treasury FROM economy WHERE id = 1`);
