@@ -81,7 +81,17 @@ holds 1B is unacceptable for mainnet. Choose one:
   (≥ ~30-day payback), durability recycle. Adjust `.env` (`POOL_SEED`, `DAILY_EMISSION`,
   `CREATOR_FEE`, …) deliberately — they are economic policy, not knobs.
 - 🔴 **Backing reconciliation job:** periodically assert `on-chain treasury balance ≥ (player coins +
-  pool + creator)`; alert if it ever drifts (catches any accounting bug early).
+  pool + creator)`; alert if it ever drifts (catches any accounting bug early). (Treasury funded with
+  ~23.9k $HASHROCK vs `POOL_SEED=20000` → starts over-collateralized by ~3.9k, which is fine.)
+- 🔴 **Reset user data before launch.** Devnet coins were backed only by worthless devnet $HASHROCK;
+  they must NOT carry into mainnet (would be unbacked → breaks invariant #3). Start mainnet on a
+  FRESH database, or wipe an existing one:
+  ```bash
+  cd server
+  DATABASE_URL=<mainnet-db> POOL_SEED=20000 CONFIRM=yes node scripts/reset-db.mjs
+  ```
+  This truncates `players` + `ledger` and re-seeds `economy` to pool=treasury=20000 (0 player coins).
+  Verify `verifyInvariant()` holds and that on-chain treasury (~23.9k) ≥ DB treasury (20k) afterwards.
 
 ## F. Infra & ops
 
@@ -104,5 +114,6 @@ holds 1B is unacceptable for mainnet. Choose one:
 1. Ship code hardening (A) — incl. decimals-6 conversion. 2. Set paid mainnet `SOLANA_RPC` +
 `SOLANA_CLUSTER=mainnet-beta` (B). 3. Mint already exists — set `HASHROCK_MINT` + `TOKEN_DECIMALS=6`
 and **fund the treasury with 20,000 $HASHROCK** + SOL; verify (C). 4. Move bulk to multisig + hot
-float (D). 5. Economy sign-off + reconciliation job — `POOL_SEED=20000` ≤ treasury (E). 6. `.env` →
-mainnet values, `docker compose up -d --build`, verify (F). 7. Confirm art/legal (G). Only then announce.
+float (D). 5. Economy sign-off + reconciliation job — `POOL_SEED=20000` ≤ treasury; **reset user data
+(`reset-db.mjs`)** so no devnet balances carry over (E). 6. `.env` → mainnet values,
+`docker compose up -d --build`, verify (F). 7. Confirm art/legal (G). Only then announce.
