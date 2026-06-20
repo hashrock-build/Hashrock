@@ -3,6 +3,7 @@
 // this file is a renderer + input layer. The map (ground/props/collision) is generated
 // locally from shared/mapgen.ts — identical to the server's, so ore lands on valid cells.
 import { Application, Container, Graphics, Sprite, Text, Texture } from "pixi.js";
+import { sfx } from "./sound";
 import type { Room } from "colyseus.js";
 import { TILE, cellCenter, facingFrom, Facing } from "./topdown";
 import { clusterForHp, CRYSTAL_W, GroundTiles } from "./tiles";
@@ -55,6 +56,7 @@ export class World {
   private miningBarG!: Graphics;
   private miningBarTxt!: Text;
   private nameLabel!: Text; // local player's username, floating above the head
+  private mineSfxAt = 0; // throttle the mining swing SFX
   private lastMoveSent = 0;
   private lastSentX = -1; private lastSentY = -1;
 
@@ -390,6 +392,7 @@ export class World {
       }
     }
     if (!mineActive) this.setMiningBar(undefined);
+    else { const t = performance.now(); if (t - this.mineSfxAt > 360) { this.mineSfxAt = t; sfx("mine", 0.45); } } // swing tick
 
     if (this.playerCtl) this.playerCtl.update(this.facing, moving, mineActive);
     else this.drawPlayer(this.playerNode as Graphics);

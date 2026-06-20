@@ -1,6 +1,7 @@
 import { Application } from "pixi.js";
 import { World } from "./world";
 import { connect, roomStats, getNonce } from "./net";
+import { initSound, startBgm, sfx, toggleMuted, isMuted } from "./sound";
 import { getPhantom, connectPhantom, disconnectPhantom, signLogin } from "./wallet";
 import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
@@ -77,7 +78,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   net.room.onMessage("ev", (m: { k: string; id?: number; hash?: string; gx?: number; gy?: number }) => {
     console.log("[ev]", m);
     if (m.k === "spawn") pushFeed("spawn", `⛏ ${(m.hash ?? "").slice(0, 6)}… → (${m.gx},${m.gy})`);
-    else if (m.k === "mine") pushFeed("mine", `✅ mined #${m.id} (${m.gx},${m.gy})`);
+    else if (m.k === "mine") { pushFeed("mine", `✅ mined #${m.id} (${m.gx},${m.gy})`); sfx("ore", 0.55); }
     else if (m.k === "evict") pushFeed("evict", `✗ unmined #${m.id}`);
   });
 
@@ -181,6 +182,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   const showBuyDone = (icon: string, head: string, msg: string, url: string) => {
     $("bdIcon").textContent = icon; $("bdHead").textContent = head; $("bdMsg").textContent = msg;
     ($("bdLink") as HTMLAnchorElement).href = url;
+    sfx("buy", 0.6);
     showModal("buyDoneModal");
   };
 
@@ -229,6 +231,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     $("rdAmount").textContent = fmt(m.amount);
     ($("rdLink") as HTMLAnchorElement).href = m.url;
     ($("redeemconfirm") as HTMLButtonElement).disabled = false;
+    sfx("buy", 0.6);
     showModal("redeemDoneModal");
   });
   net.room.onMessage("redeemErr", (m: { msg: string }) => { ($("redeemconfirm") as HTMLButtonElement).disabled = false; toast("⚠ redeem: " + m.msg); });
@@ -327,6 +330,14 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
 
 // ===== Landing / start page controller (shown first; game boots on Play/View) =====
 function initLanding(): void {
+  initSound();
+  // mute toggle (persisted) — wire the HUD button
+  const soundBtn = $("soundBtn") as HTMLButtonElement;
+  const paintSound = () => (soundBtn.textContent = isMuted() ? "🔇" : "🔊");
+  paintSound();
+  soundBtn.addEventListener("click", () => { toggleMuted(); paintSound(); });
+  // click blip on any button press (cheap, covers all UI)
+  document.addEventListener("click", (e) => { if ((e.target as HTMLElement)?.closest("button")) sfx("click", 0.3); });
   let started = false;
   // Playing REQUIRES a connected wallet — the wallet address is the player identity, so no one
   // can mine/earn anonymously. Both "Play Now" and "Connect Wallet" run the same gate.
@@ -345,6 +356,7 @@ function initLanding(): void {
     if (!auth) return void toast("wallet must support message signing to play");
     started = true;
     document.body.classList.add("playing");
+    startBgm(); // user gesture → autoplay allowed
     enterGame(addr, auth);
   };
   $("playBtn").addEventListener("click", enterWithWallet);

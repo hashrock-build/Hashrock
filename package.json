@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@pixi/sound": "^6.0.1",
     "@solana/web3.js": "^1.98.4",
     "colyseus.js": "^0.16.22",
     "pixi.js": "^8.6.0"
