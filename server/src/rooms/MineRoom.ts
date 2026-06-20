@@ -94,6 +94,13 @@ export class MineRoom extends Room<MineState> {
     this.onMessage("redeem", (client, m: { amount: number }) => this.onRedeem(client, m));
     this.onMessage("deposit", (client, m: { sig: string }) => this.onDeposit(client, m));
 
+    // Pre-seed the deposit watcher with the treasury's pre-existing txs (e.g. the initial reserve
+    // funding) so they can NEVER be mis-credited to a player who later registers the funding
+    // wallet — only transfers that arrive while we're live count. App deposits still go through
+    // onDeposit() immediately, and persistDeposit dedupes by sig regardless.
+    try { (await chain.recentTreasurySigs(25)).forEach((s) => this.seenDeposits.add(s)); }
+    catch { /* RPC flaky at boot — watcher still needs a registered-wallet match to credit anything */ }
+
     this.clock.setInterval(() => this.spawnOre(), SPAWN_INTERVAL);
     this.clock.setInterval(() => this.pollDeposits(), 15000); // auto-credit incoming deposits
     this.clock.setInterval(() => this.refreshTreasury(), 20000); // HUD treasury mirrors on-chain reserve
