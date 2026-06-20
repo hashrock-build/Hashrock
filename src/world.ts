@@ -9,7 +9,7 @@ import { TILE, cellCenter, facingFrom, Facing } from "./topdown";
 import { clusterForHp, CRYSTAL_W, GroundTiles } from "./tiles";
 import { Player, PlayerAnims } from "./player";
 import { WorldProps } from "./props";
-import { MAP_W, MAP_H, idx, inB, buildVillage, Village } from "./village";
+import { MAP_W, MAP_H, idx, inB, buildVillage, buildCave, Village } from "./village";
 import { GroundLayer } from "./ground";
 import { SKINS } from "../shared/items";
 
@@ -63,19 +63,19 @@ export class World {
   lastHash = "—";
   onChange?: () => void;
 
-  constructor(app: Application, assets: WorldAssets, room: Room, cb: any) {
+  constructor(app: Application, assets: WorldAssets, room: Room, cb: any, zone = "village") {
     this.app = app;
     this.room = room;
     this.cb = cb;
     this.crystals = assets.crystals;
     this.oreScale = assets.crystals ? TILE / CRYSTAL_W : 1;
-    this.village = buildVillage(assets.props!);
+    this.village = zone === "cave" ? buildCave(assets.props!) : buildVillage(assets.props!);
 
     this.scene = new Container();
     this.app.stage.addChild(this.scene);
 
     if (assets.groundTiles) {
-      this.ground = new GroundLayer(app, MAP_W, MAP_H, this.village.terrain, assets.groundTiles);
+      this.ground = new GroundLayer(app, MAP_W, MAP_H, this.village.terrain, assets.groundTiles, zone);
       this.scene.addChild(this.ground.container);
     }
     this.decorLayer = new Container();

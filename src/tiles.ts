@@ -68,6 +68,8 @@ export interface GroundTiles {
   waterFill: Texture[];
   dirtTile(tx: number, ty: number): Texture; // dirt blob (+10 col offset baked in)
   waterTile(tx: number, ty: number): Texture; // water island blob
+  caveFloor: Texture; // M5 cave zone: stone floor base
+  caveWall: Texture;  // M5 cave zone: solid rock wall (rendered dark)
 }
 
 let groundCache: GroundTiles | null = null;
@@ -88,6 +90,8 @@ export async function loadGroundTiles(): Promise<GroundTiles> {
     waterFill: [cut(water, 1, 6), cut(water, 2, 7), cut(water, 1, 8), cut(water, 3, 6)],
     dirtTile: (tx, ty) => cut(floors, 10 + tx, ty),
     waterTile: (tx, ty) => cut(water, tx, ty),
+    caveFloor: cut(floors, 7, 10), // stone/cobble fill
+    caveWall: cut(floors, 8, 11),  // rock fill (tinted dark in the cave ground layer)
   };
   return groundCache;
 }

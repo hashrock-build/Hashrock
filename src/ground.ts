@@ -13,11 +13,13 @@ const CHUNK = 32; // tiles per chunk
 export const T_GRASS = 0;
 export const T_DIRT = 1;
 export const T_WATER = 2;
+export const T_WALL = 3; // cave/dungeon solid rock
 
 export class GroundLayer {
   readonly container = new Container();
 
-  constructor(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
+  constructor(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles, zone = "village") {
+    if (zone === "cave") { this.buildCave(app, mapW, mapH, terrain, g); return; }
     const at = (gx: number, gy: number): number =>
       gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_GRASS;
     const dirtOn = (gx: number, gy: number) => (at(gx, gy) === T_DIRT ? 1 : 0);
@@ -65,6 +67,41 @@ export class GroundLayer {
           }
         }
 
+        const rt = RenderTexture.create({ width: CHUNK * TILE, height: CHUNK * TILE });
+        rt.source.scaleMode = "nearest";
+        app.renderer.render({ container: c, target: rt });
+        const sprite = new Sprite(rt);
+        sprite.x = ox * TILE; sprite.y = oy * TILE;
+        this.container.addChild(sprite);
+        c.destroy({ children: true });
+      }
+    }
+  }
+
+  // M5 cave/dungeon ground: stone floor + dark rock walls, baked into chunks (no dirt/water
+  // overlays — caves have neither). Walls are the floor tile tinted near-black so the cavern
+  // shape reads clearly; per-cell noise keeps the floor from looking flat.
+  private buildCave(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
+    const cx0 = Math.ceil(mapW / CHUNK), cy0 = Math.ceil(mapH / CHUNK);
+    for (let cy = 0; cy < cy0; cy++) {
+      for (let cx = 0; cx < cx0; cx++) {
+        const ox = cx * CHUNK, oy = cy * CHUNK;
+        const c = new Container();
+        for (let gy = oy; gy < oy + CHUNK && gy < mapH; gy++) {
+          for (let gx = ox; gx < ox + CHUNK && gx < mapW; gx++) {
+            const isWall = terrain[gy * mapW + gx] === T_WALL;
+            const s = new Sprite(isWall ? g.caveWall : g.caveFloor);
+            s.x = (gx - ox) * TILE; s.y = (gy - oy) * TILE; s.setSize(TILE);
+            if (isWall) {
+              const b = Math.round((0.16 + vnoise(gx, gy, 5, 6) * 0.12) * 255); // dark rock
+              s.tint = (b << 16) | (b << 8) | ((b + 8) << 0);
+            } else {
+              const b = Math.round((0.55 + vnoise(gx, gy, 7, 3) * 0.2) * 255); // dim stone floor
+              s.tint = (b << 16) | (b << 8) | b;
+            }
+            c.addChild(s);
+          }
+        }
         const rt = RenderTexture.create({ width: CHUNK * TILE, height: CHUNK * TILE });
         rt.source.scaleMode = "nearest";
         app.renderer.render({ container: c, target: rt });

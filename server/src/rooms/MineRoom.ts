@@ -58,7 +58,7 @@ export class MineRoom extends Room<MineState> {
   private dmg = new Map<number, Map<string, number>>(); // oreId -> (sessionId -> damage)
   private seenDeposits = new Set<string>(); // tx sigs already processed by the deposit watcher
 
-  async onCreate(): Promise<void> {
+  async onCreate(options?: { zone?: string }): Promise<void> {
     this.setState(new MineState());
     await db.initSchema(POOL_SEED);
     const eco = await db.getEconomy();
@@ -67,9 +67,12 @@ export class MineRoom extends Room<MineState> {
     this.state.treasury = eco.treasury;
     this.state.cap = ORE_CAP;
 
-    const village = gen.buildVillage(); // server & client share this exact map
-    this.freeCells = village.freeCells;
-    this.blocked = village.blocked;
+    // zone selects which deterministic map to host; the client renders the SAME map (shared gen)
+    const zone = options?.zone === "cave" ? "cave" : "village";
+    const map = zone === "cave" ? gen.buildCave() : gen.buildVillage();
+    this.freeCells = map.freeCells;
+    this.blocked = map.blocked;
+    console.log(`[room] zone=${zone} freeCells=${this.freeCells.length}`);
 
     this.onMessage("move", (client, m: { x: number; y: number }) => this.onMove(client, m));
     this.onMessage("mine", (client, m: { oreId: number }) => this.onMineStart(client, m));

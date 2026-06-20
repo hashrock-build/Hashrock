@@ -22,7 +22,15 @@ export interface Village {
 }
 
 export function buildVillage(P: WorldProps): Village {
-  const g = gen.buildVillage();
+  return adapt(gen.buildVillage(), P);
+}
+
+/** M5 cave/dungeon zone — same adapter, different deterministic map (shared/mapgen buildCave). */
+export function buildCave(P: WorldProps): Village {
+  return adapt(gen.buildCave(), P);
+}
+
+function adapt(g: gen.VillageData, P: WorldProps): Village {
   const lists: Record<gen.PropType, PropDef[] | PropDef> = {
     [gen.PropType.TREE]: P.trees,
     [gen.PropType.BUSH]: P.bushes,

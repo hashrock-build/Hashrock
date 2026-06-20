@@ -33,9 +33,12 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     loadGroundTiles(), loadCrystalFrames(), loadCharacters(), loadProps(),
   ]);
 
+  // M5 zone select (local test: ?zone=cave). Village is the default live world.
+  const zone = new URLSearchParams(location.search).get("zone") === "cave" ? "cave" : "village";
+
   let net;
   try {
-    net = await connect("miner", walletAddr, auth); // identity = the signed-in wallet address
+    net = await connect("miner", walletAddr, auth, zone); // identity = the signed-in wallet address
   } catch (e) {
     toast("⚠ server offline — start: npm --prefix server run dev");
     console.error("[net] connect failed", e);
@@ -43,7 +46,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     return;
   }
 
-  const world = new World(app, { groundTiles, crystals, playerAnims, props }, net.room, net.$);
+  const world = new World(app, { groundTiles, crystals, playerAnims, props }, net.room, net.$, zone);
   if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV)
     (window as unknown as { world: World }).world = world;
 
