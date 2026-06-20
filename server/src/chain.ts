@@ -179,6 +179,9 @@ export async function recentTreasurySigs(limit = 15): Promise<string[]> {
 
 /** Verify a confirmed tx really moved $HASHROCK INTO the treasury; return {amount, source}. */
 export async function verifyDeposit(sig: string): Promise<{ amount: number; source: string } | null> {
+  // Guard malformed signatures (empty / wrong length from a wallet quirk or aborted send): the RPC
+  // throws "Invalid param: WrongSize" otherwise. Treat as simply "not verified" (return null).
+  try { if (!sig || bs58.decode(sig).length !== 64) return null; } catch { return null; }
   const tx = await conn.getParsedTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
   if (!tx || tx.meta?.err) return null;
   const keys = tx.transaction.message.accountKeys.map((k) => k.pubkey.toBase58());
