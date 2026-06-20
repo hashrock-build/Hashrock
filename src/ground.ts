@@ -78,30 +78,57 @@ export class GroundLayer {
     }
   }
 
-  // M5 cave/dungeon ground: stone floor + dark rock walls, baked into chunks (no dirt/water
-  // overlays — caves have neither). Walls are the floor tile tinted near-black so the cavern
-  // shape reads clearly; per-cell noise keeps the floor from looking flat.
+  // M5 cave/dungeon ground: a stone floor with ORGANIC rock-wall edges. We reuse the proven
+  // dirt dual-grid autotiler (soft brown blob, no green/blue), treating WALL as the "dirt" and
+  // tinting it dark rock — so wall↔floor borders get rounded edges instead of hard squares, and
+  // it reads as rock (not a water pond). A dark vignette layer under the rim deepens the void.
   private buildCave(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
+    const at = (gx: number, gy: number) => (gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_WALL);
+    const wallOn = (gx: number, gy: number) => (at(gx, gy) === T_WALL ? 1 : 0); // wall plays "dirt"
+    const RIM = 0x6a5640;   // warm rock-rim tint (multiplies the brown dirt edge tiles)
+    const FILL = 0x241d15;  // near-black rock interior
     const cx0 = Math.ceil(mapW / CHUNK), cy0 = Math.ceil(mapH / CHUNK);
     for (let cy = 0; cy < cy0; cy++) {
       for (let cx = 0; cx < cx0; cx++) {
         const ox = cx * CHUNK, oy = cy * CHUNK;
         const c = new Container();
+
+        // stone floor base (every cell; per-cell noise so it isn't flat)
         for (let gy = oy; gy < oy + CHUNK && gy < mapH; gy++) {
           for (let gx = ox; gx < ox + CHUNK && gx < mapW; gx++) {
-            const isWall = terrain[gy * mapW + gx] === T_WALL;
-            const s = new Sprite(isWall ? g.caveWall : g.caveFloor);
+            const s = new Sprite(g.caveFloor);
             s.x = (gx - ox) * TILE; s.y = (gy - oy) * TILE; s.setSize(TILE);
-            if (isWall) {
-              const b = Math.round((0.16 + vnoise(gx, gy, 5, 6) * 0.12) * 255); // dark rock
-              s.tint = (b << 16) | (b << 8) | ((b + 8) << 0);
-            } else {
-              const b = Math.round((0.55 + vnoise(gx, gy, 7, 3) * 0.2) * 255); // dim stone floor
-              s.tint = (b << 16) | (b << 8) | b;
-            }
+            const b = Math.round((0.5 + vnoise(gx, gy, 7, 3) * 0.22) * 255);
+            s.tint = (b << 16) | (b << 8) | b;
             c.addChild(s);
           }
         }
+        // solid dark fill under wall cells (so the void is opaque even where the blob is thin)
+        for (let gy = oy; gy < oy + CHUNK && gy < mapH; gy++) {
+          for (let gx = ox; gx < ox + CHUNK && gx < mapW; gx++) {
+            if (terrain[gy * mapW + gx] !== T_WALL) continue;
+            const s = new Sprite(g.caveFloor);
+            s.x = (gx - ox) * TILE; s.y = (gy - oy) * TILE; s.setSize(TILE);
+            s.tint = FILL;
+            c.addChild(s);
+          }
+        }
+        // wall rim via the dirt dual-grid (soft rounded brown edges), tinted to rock
+        for (let dy = oy; dy <= oy + CHUNK; dy++) {
+          for (let dx = ox; dx <= ox + CHUNK; dx++) {
+            const sig = `${wallOn(dx - 1, dy - 1)}${wallOn(dx, dy - 1)}${wallOn(dx - 1, dy)}${wallOn(dx, dy)}`;
+            const m = DIRT_GMAP[sig];
+            if (!m) continue; // "0000" → no wall here
+            const tex = m === "fill"
+              ? g.dirtFill[Math.floor(vnoise(dx, dy, 2, 9) * g.dirtFill.length) % g.dirtFill.length]
+              : g.dirtTile(m[0], m[1]);
+            const s = new Sprite(tex);
+            s.x = (dx - ox) * TILE - TILE / 2; s.y = (dy - oy) * TILE - TILE / 2; s.setSize(TILE);
+            s.tint = m === "fill" ? FILL : RIM;
+            c.addChild(s);
+          }
+        }
+
         const rt = RenderTexture.create({ width: CHUNK * TILE, height: CHUNK * TILE });
         rt.source.scaleMode = "nearest";
         app.renderer.render({ container: c, target: rt });

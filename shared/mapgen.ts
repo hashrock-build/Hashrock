@@ -259,6 +259,37 @@ export function buildCave(): VillageData {
   for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++)
     if (inB(C.x + dx, C.y + dy)) cur[idx(C.x + dx, C.y + dy)] = 0;
 
+  // 3b) despeckle: drop lone wall nubs + fill lone floor pockets → smoother, rounder edges
+  for (let pass = 0; pass < 2; pass++) {
+    const next = cur.slice();
+    for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+      const i = idx(x, y), n = wallNeighbours(cur, x, y);
+      if (cur[i] === 1 && n <= 2) next[i] = 0;       // isolated wall nub → floor
+      else if (cur[i] === 0 && n >= 6) next[i] = 1;  // pinched floor pocket → wall
+    }
+    cur = next;
+  }
+
+  // 3c) erase tiny isolated wall regions (mini-pits/specks) — only big caverns survive
+  const seen = new Uint8Array(N);
+  for (let i0 = 0; i0 < N; i0++) {
+    if (cur[i0] !== 1 || seen[i0]) continue;
+    const region: number[] = [], st = [i0]; seen[i0] = 1;
+    let touchesBorder = false;
+    while (st.length) {
+      const i = st.pop()!, x = i % W, y = (i / W) | 0;
+      region.push(i);
+      if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2) touchesBorder = true;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!inB(nx, ny)) continue;
+        const ni = idx(nx, ny);
+        if (!seen[ni] && cur[ni] === 1) { seen[ni] = 1; st.push(ni); }
+      }
+    }
+    if (!touchesBorder && region.length < 14) for (const i of region) cur[i] = 0; // dissolve speck
+  }
+
   // reusable flood-fill: reachable open cells from spawn given a "blocked" predicate
   const flood = (isBlocked: (i: number) => boolean): Uint8Array => {
     const reach = new Uint8Array(N), s0 = idx(C.x, C.y);
@@ -291,8 +322,8 @@ export function buildCave(): VillageData {
     if (terrain[i] !== FLOOR) continue;
     if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
     const r = cellHash(x + 11, y + 5);
-    if (r < 0.02) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; }
-    else if (r < 0.07) decor.push({ gx: x, gy: y, type: PropType.TUFT, v: vh(x, y, 4) });
+    // boulders/stalagmites only — no green tufts (this is a cave, not a meadow)
+    if (r < 0.025) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; }
   }
 
   // 6) freeCells = floor reachable AFTER boulders (a boulder in a 1-wide gap can't strand ore)
