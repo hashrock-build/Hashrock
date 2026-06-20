@@ -277,7 +277,7 @@ export async function settleMarketSale(listingId: number, buyerId: string, fee: 
     if (!(sown & bit)) { await c.query("ROLLBACK"); return { ok: false, reason: "seller no longer owns it" }; }
     if (seller === buyerId) { await c.query("ROLLBACK"); return { ok: false, reason: "cannot buy your own listing" }; }
     // seller loses the item (+ unequip if equipped); axe level for that tier resets
-    await c.query(`UPDATE players SET ${own} = ${own} & ~$2, ${eq} = CASE WHEN ${eq} = $3 THEN 0 ELSE ${eq} END WHERE id=$1`, [seller, bit, n(item)]);
+    await c.query(`UPDATE players SET ${own} = ${own} & ~($2::int), ${eq} = CASE WHEN ${eq} = $3 THEN 0 ELSE ${eq} END WHERE id=$1`, [seller, bit, n(item)]);
     if (kind === "axe") await c.query(`UPDATE players SET axe_levels = axe_levels & ~($2::int) WHERE id=$1`, [seller, 0xf << (n(item) * 4)]);
     // buyer gains the item
     await c.query(`UPDATE players SET ${own} = ${own} | $2 WHERE id=$1`, [buyerId, bit]);
