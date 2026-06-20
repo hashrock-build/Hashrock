@@ -20,6 +20,7 @@ export const T_WALL = 3; // cave/dungeon wall — blocks the player + ore, rende
 export enum PropType {
   TREE, BUSH, FLOWER, FERN, TUFT, ROCK, HOUSE, FENCE_H, FENCE_POST, SCARECROW, CROP, DECOR,
   CAVE_DECOR, // M5 cave flora/crystals (mushrooms + gems)
+  FORGE_DECOR, // M5 forge lava crystals
 }
 
 export interface Placed { gx: number; gy: number; type: PropType; v: number; }
@@ -224,7 +225,7 @@ const FLOOR = T_GRASS; // floor reuses code 0; the zone's tileset decides how it
 
 // Shared cellular-automata cavern carver. `seed` shifts the layout (each zone gets a different
 // cave); `flora` adds mushrooms/crystals (cave) vs bare rock (forge). buildCave/buildForge wrap it.
-function carveCaverns(seed: number, flora: boolean): VillageData {
+function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
   const W = MAP_W, H = MAP_H, N = W * H;
   const terrain = new Uint8Array(N);
   const blocked = new Uint8Array(N);
@@ -328,7 +329,8 @@ function carveCaverns(seed: number, flora: boolean): VillageData {
     const r = cellHash(x + 11 + seed, y + 5 + seed);
     if (r < 0.012) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder
     else if (r < 0.025) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stone
-    else if (flora && cellHash(x + 5 + seed, y + 17 + seed) < 0.02) decor.push({ gx: x, gy: y, type: PropType.CAVE_DECOR, v: vh(x, y, 6) }); // mushrooms / crystals
+    else if (cellHash(x + 5 + seed, y + 17 + seed) < 0.035) // flora/crystals (cave) or lava crystals (forge)
+      decor.push({ gx: x, gy: y, type: decorKind === "forge" ? PropType.FORGE_DECOR : PropType.CAVE_DECOR, v: vh(x, y, 6) });
   }
 
   // 6) freeCells = floor reachable AFTER boulders (a boulder in a 1-wide gap can't strand ore)
@@ -340,5 +342,5 @@ function carveCaverns(seed: number, flora: boolean): VillageData {
 }
 
 // Cave zone (seed 0 = the original cave, unchanged) + Forge zone (different seed, no flora).
-export function buildCave(): VillageData { return carveCaverns(0, true); }
-export function buildForge(): VillageData { return carveCaverns(73, false); }
+export function buildCave(): VillageData { return carveCaverns(0, "cave"); }
+export function buildForge(): VillageData { return carveCaverns(73, "forge"); }

@@ -29,6 +29,7 @@ export interface WorldProps {
   crops: PropDef[];
   decor: PropDef[];
   caveDecor: PropDef[]; // M5 cave flora/crystals — mushrooms + gems (sliced from Vegetation.png)
+  forgeDecor: PropDef[]; // M5 forge lava crystals (gem sprites recoloured molten)
 }
 
 const SCALE = 2;
@@ -78,6 +79,12 @@ export async function loadProps(): Promise<WorldProps> {
     def(vpx(3, 353, 11, 14), { anchorY: 1, tint: 0xc77dff }), // amethyst crystal (red gem → purple)
     def(vpx(19, 353, 11, 14), { anchorY: 1 }),               // blue crystal gem
   ];
+  // forge lava crystals — same gem sprites recoloured molten red/orange
+  const forgeDecor = [
+    def(vpx(3, 353, 11, 14), { anchorY: 1, tint: 0xff5a2a }),  // glowing red lava crystal
+    def(vpx(19, 353, 11, 14), { anchorY: 1, tint: 0xff9a2a }), // orange lava crystal (blue gem → orange)
+    def(vpx(49, 338, 14, 14), { anchorY: 1, tint: 0x6a4030 }), // charred obsidian shard (big mushroom recoloured dark)
+  ];
 
   cache = {
     trees: trees.map((t) => def(t, { anchorY: 0.95 })),
@@ -93,6 +100,7 @@ export async function loadProps(): Promise<WorldProps> {
     crops: cropTex.map((t) => def(t, { anchorY: 0.8 })),
     decor: decor.map((t) => def(t, { anchorY: 0.88 })),
     caveDecor,
+    forgeDecor,
   };
   return cache;
 }
