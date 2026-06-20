@@ -66,16 +66,17 @@ export async function loadProps(): Promise<WorldProps> {
   ]);
   const decor = await loadAll("decor", man.decor);
 
-  // M5 cave flora/crystals — sliced straight from the 16px Vegetation sheet (already in public).
+  // M5 cave flora/crystals — cut by EXACT sprite bounds (pixel rects from a component scan) so
+  // nothing is clipped (the 16px grid sliced through the mushroom stems). anchorY:1 = feet on ground.
   const veg: Texture = await Assets.load("/assets/props/Vegetation.png");
   veg.source.scaleMode = "nearest";
-  const vcut = (tx: number, ty: number) => new Texture({ source: veg.source, frame: new Rectangle(tx * 16, ty * 16, 16, 16) });
+  const vpx = (x: number, y: number, w: number, h: number) => new Texture({ source: veg.source, frame: new Rectangle(x, y, w, h) });
   const caveDecor = [
-    def(vcut(1, 21), { anchorY: 0.85 }),                 // small mushroom
-    def(vcut(2, 21), { anchorY: 0.85 }),                 // mushroom
-    def(vcut(3, 21), { anchorY: 0.85 }),                 // big mushroom
-    def(vcut(0, 22), { anchorY: 0.8, tint: 0xc77dff }),  // amethyst crystal (red gem recoloured purple)
-    def(vcut(1, 22), { anchorY: 0.8 }),                  // blue crystal gem
+    def(vpx(21, 341, 5, 7), { anchorY: 1 }),                  // small mushroom
+    def(vpx(36, 340, 8, 9), { anchorY: 1 }),                  // mushroom
+    def(vpx(49, 338, 14, 14), { anchorY: 1 }),               // big mushroom
+    def(vpx(3, 353, 11, 14), { anchorY: 1, tint: 0xc77dff }), // amethyst crystal (red gem → purple)
+    def(vpx(19, 353, 11, 14), { anchorY: 1 }),               // blue crystal gem
   ];
 
   cache = {

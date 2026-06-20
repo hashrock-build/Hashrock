@@ -222,7 +222,9 @@ export function buildVillage(): VillageData {
 
 const FLOOR = T_GRASS; // floor reuses code 0; the zone's tileset decides how it looks
 
-export function buildCave(): VillageData {
+// Shared cellular-automata cavern carver. `seed` shifts the layout (each zone gets a different
+// cave); `flora` adds mushrooms/crystals (cave) vs bare rock (forge). buildCave/buildForge wrap it.
+function carveCaverns(seed: number, flora: boolean): VillageData {
   const W = MAP_W, H = MAP_H, N = W * H;
   const terrain = new Uint8Array(N);
   const blocked = new Uint8Array(N);
@@ -234,7 +236,7 @@ export function buildCave(): VillageData {
   // 1) deterministic initial fill — solid border + ~46% interior rock
   let cur = new Uint8Array(N);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
-    cur[idx(x, y)] = border(x, y) ? 1 : (cellHash(x * 3 + 1, y * 3 + 7) < 0.46 ? 1 : 0);
+    cur[idx(x, y)] = border(x, y) ? 1 : (cellHash(x * 3 + 1 + seed, y * 3 + 7 + seed) < 0.46 ? 1 : 0);
 
   // 2) cellular-automata smoothing → organic caverns (4-5-rule)
   const wallNeighbours = (s: Uint8Array, x: number, y: number) => {
@@ -323,10 +325,10 @@ export function buildCave(): VillageData {
     const i = idx(x, y);
     if (terrain[i] !== FLOOR) continue;
     if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
-    const r = cellHash(x + 11, y + 5);
+    const r = cellHash(x + 11 + seed, y + 5 + seed);
     if (r < 0.012) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder
     else if (r < 0.025) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stone
-    else if (cellHash(x + 5, y + 17) < 0.02) decor.push({ gx: x, gy: y, type: PropType.CAVE_DECOR, v: vh(x, y, 6) }); // mushrooms / crystals
+    else if (flora && cellHash(x + 5 + seed, y + 17 + seed) < 0.02) decor.push({ gx: x, gy: y, type: PropType.CAVE_DECOR, v: vh(x, y, 6) }); // mushrooms / crystals
   }
 
   // 6) freeCells = floor reachable AFTER boulders (a boulder in a 1-wide gap can't strand ore)
@@ -336,3 +338,7 @@ export function buildCave(): VillageData {
 
   return { terrain, blocked, freeCells, props, decor, spawn: { gx: C.x, gy: C.y } };
 }
+
+// Cave zone (seed 0 = the original cave, unchanged) + Forge zone (different seed, no flora).
+export function buildCave(): VillageData { return carveCaverns(0, true); }
+export function buildForge(): VillageData { return carveCaverns(73, false); }
