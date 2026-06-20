@@ -20,6 +20,7 @@ export class GroundLayer {
 
   constructor(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles, zone = "village") {
     if (zone === "cave") { this.buildCave(app, mapW, mapH, terrain, g); return; }
+    if (zone === "forge") { this.buildForge(app, mapW, mapH, terrain, g); return; }
     const at = (gx: number, gy: number): number =>
       gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_GRASS;
     const dirtOn = (gx: number, gy: number) => (at(gx, gy) === T_DIRT ? 1 : 0);
@@ -159,6 +160,54 @@ export class GroundLayer {
             s.tint = RIM; s.alpha = 0.5; c.addChild(s);
           }
 
+        const rt = RenderTexture.create({ width: CHUNK * TILE, height: CHUNK * TILE });
+        rt.source.scaleMode = "nearest";
+        app.renderer.render({ container: c, target: rt });
+        const sprite = new Sprite(rt);
+        sprite.x = ox * TILE; sprite.y = oy * TILE;
+        this.container.addChild(sprite);
+        c.destroy({ children: true });
+      }
+    }
+  }
+
+  // M5 forge/volcanic ground: dark obsidian floor + glowing LAVA lakes (impassable). The lava is
+  // the water dual-grid autotiler (organic lake edges) tinted molten orange; the floor is the
+  // stone tile tinted dark warm rock. Reuses the proven village water render — lava IS a liquid.
+  private buildForge(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
+    const at = (gx: number, gy: number) => (gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_WALL);
+    const floorOn = (gx: number, gy: number) => (at(gx, gy) === T_WALL ? 0 : 1); // floor plays "land", lava plays "water"
+    const cx0 = Math.ceil(mapW / CHUNK), cy0 = Math.ceil(mapH / CHUNK);
+    for (let cy = 0; cy < cy0; cy++) {
+      for (let cx = 0; cx < cx0; cx++) {
+        const ox = cx * CHUNK, oy = cy * CHUNK;
+        const c = new Container();
+        // obsidian floor base (warm-dark, per-cell noise)
+        for (let gy = oy; gy < oy + CHUNK && gy < mapH; gy++) {
+          for (let gx = ox; gx < ox + CHUNK && gx < mapW; gx++) {
+            const s = new Sprite(g.caveFloor);
+            s.x = (gx - ox) * TILE; s.y = (gy - oy) * TILE; s.setSize(TILE);
+            const b = 0.30 + vnoise(gx, gy, 7, 3) * 0.16;
+            s.tint = (Math.round(b * 255) << 16) | (Math.round(b * 0.5 * 255) << 8) | Math.round(b * 0.42 * 255); // dark red-brown rock
+            c.addChild(s);
+          }
+        }
+        // lava lakes via the water dual-grid (organic edges), tinted molten orange (crust at rims)
+        for (let dy = oy; dy <= oy + CHUNK; dy++) {
+          for (let dx = ox; dx <= ox + CHUNK; dx++) {
+            const sig = `${floorOn(dx - 1, dy - 1)}${floorOn(dx, dy - 1)}${floorOn(dx - 1, dy)}${floorOn(dx, dy)}`;
+            if (sig === "1111") continue; // all floor → no lava here
+            const solid = sig === "0000";
+            const tex = solid
+              ? g.waterFill[Math.floor(vnoise(dx, dy, 2, 5) * g.waterFill.length) % g.waterFill.length]
+              : g.waterTile(WATER_GMAP[sig][0], WATER_GMAP[sig][1]);
+            const s = new Sprite(tex);
+            s.x = (dx - ox) * TILE - TILE / 2; s.y = (dy - oy) * TILE - TILE / 2; s.setSize(TILE);
+            if (solid) { const gpct = 0.7 + vnoise(dx, dy, 3, 8) * 0.3; s.tint = (255 << 16) | (Math.round(120 * gpct) << 8) | 20; } // molten, glowing
+            else s.tint = 0x90300c; // dark cooled crust at the rim
+            c.addChild(s);
+          }
+        }
         const rt = RenderTexture.create({ width: CHUNK * TILE, height: CHUNK * TILE });
         rt.source.scaleMode = "nearest";
         app.renderer.render({ container: c, target: rt });

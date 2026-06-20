@@ -30,6 +30,11 @@ export function buildCave(P: WorldProps): Village {
   return adapt(gen.buildCave(), P);
 }
 
+/** M5 forge/volcanic zone — lava-cavern layout (shared/mapgen buildForge). */
+export function buildForge(P: WorldProps): Village {
+  return adapt(gen.buildForge(), P);
+}
+
 function adapt(g: gen.VillageData, P: WorldProps): Village {
   const lists: Record<gen.PropType, PropDef[] | PropDef> = {
     [gen.PropType.TREE]: P.trees,

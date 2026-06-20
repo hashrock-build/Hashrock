@@ -403,9 +403,20 @@
     <button id="repair" class="ghost">🔧 Repair</button>
     <button id="redeemAction">💱 Redeem</button>
     <button id="otc" class="ghost">🤝 OTC Market</button>
-    <button id="zoneBtn">⛏ Enter Cave</button>
+    <button id="zoneBtn">🗺️ Zones</button>
   </div>
   <button id="menuBtn">☰ Menu</button>
+
+  <!-- zone picker -->
+  <div id="zoneModal" class="modal">
+    <div class="panel card">
+      <button class="x" id="zoneClose">×</button>
+      <div class="phead">🗺️ Choose a Zone</div>
+      <button class="zonebtn" data-zone="village" style="width:100%;margin-top:8px">🏘️ Village — free for everyone</button>
+      <button class="zonebtn" data-zone="cave" style="width:100%;margin-top:8px">⛏ The Cave — hold ≥100 $HASHROCK · 2× ore</button>
+      <button class="zonebtn" data-zone="forge" style="width:100%;margin-top:8px">🌋 The Forge — hold ≥500 $HASHROCK · 3× ore</button>
+    </div>
+  </div>
 
   <div id="feed"></div>
 
@@ -514,10 +525,10 @@
   <div id="gateModal" class="modal">
     <div class="panel card">
       <button class="x" id="gateClose">×</button>
-      <div class="phead">🔒 Cave Locked</div>
+      <div class="phead">🔒 Holders-Only Zone</div>
       <div style="text-align:center;font-size:34px;margin:6px 0">⛏</div>
-      <div class="prow" style="font-size:15px;justify-content:center;text-align:center">You must hold <b>100&nbsp;$HASHROCK</b> to enter this map</div>
-      <div class="prow dim" id="gateSub" style="justify-content:center;text-align:center">holders mine a faster, exclusive cave</div>
+      <div class="prow" style="font-size:15px;justify-content:center;text-align:center">Hold more <b>$HASHROCK</b> to enter this zone</div>
+      <div class="prow dim" id="gateSub" style="justify-content:center;text-align:center">gated zones mine faster &amp; exclusive</div>
       <a href="https://www.orynth.dev/projects/hashrock" target="_blank" rel="noreferrer" style="text-decoration:none"><button style="margin-top:12px;width:100%">🪙 Buy $HASHROCK</button></a>
     </div>
   </div>

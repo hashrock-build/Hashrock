@@ -39,6 +39,7 @@ const httpServer = createServer((req, res) => {
 const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }) });
 gameServer.define("mine", MineRoom);                       // village zone (default)
 gameServer.define("cave", MineRoom, { zone: "cave" });     // M5 cave/dungeon zone
+gameServer.define("forge", MineRoom, { zone: "forge" });   // M5 forge/volcanic zone (VIP tier)
 
 gameServer.listen(port);
-console.log(`HASHROCK authoritative server → ws://localhost:${port}  (rooms: "mine", "cave")`);
+console.log(`HASHROCK authoritative server → ws://localhost:${port}  (rooms: "mine", "cave", "forge")`);
