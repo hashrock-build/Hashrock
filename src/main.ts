@@ -456,6 +456,9 @@ function initLanding(): void {
     try { await navigator.clipboard.writeText($("caAddr").textContent ?? ""); toast("📋 contract address copied"); } catch { toast("copy failed"); }
   });
 
+  // mobile: dismiss the rotate-to-landscape hint ("Play anyway")
+  $("rotateDismiss").addEventListener("click", () => document.body.classList.add("rotate-ok"));
+
   // cave gate popup close (shown when a non-holder is rejected from the cave zone)
   const gate = $("gateModal");
   $("gateClose").addEventListener("click", () => gate.classList.remove("show"));
