@@ -4,6 +4,7 @@ import { Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { MineRoom, liveStats } from "./rooms/MineRoom";
 import { issueNonce } from "./nonce";
+import { startSolvencyMonitor } from "./solvency";
 import * as db from "./db";
 import * as chain from "./chain";
 
@@ -20,6 +21,8 @@ console.log(`Chain ready · $HASHROCK ${chain.mintAddress()} · treasury ${chain
 
 chain.startBlockhashRelayer(); // ore spawns derive position from the latest Solana blockhash
 console.log(`Blockhash relayer started (${process.env.SOLANA_CLUSTER || "devnet"})`);
+
+startSolvencyMonitor(); // periodic 1:1 backing reconciliation (internal invariant + on-chain treasury)
 
 const httpServer = createServer((req, res) => {
   if (req.url === "/health") { res.writeHead(200, { "content-type": "text/plain" }); res.end("ok"); return; }
