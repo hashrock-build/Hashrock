@@ -30,7 +30,7 @@ function toast(msg: string): void {
 // Identity = the wallet address, PROVEN by an ed25519 signature (see signLogin). The server
 // rejects the join unless the signature verifies, so each account is bound to a wallet only its
 // owner can sign for — switching wallets switches accounts; you can only redeem to your own.
-async function enterGame(walletAddr: string, auth: { msg: string; sig: string }): Promise<void> {
+async function enterGame(walletAddr: string, auth: { msg: string; sig: string }): Promise<boolean> {
   const app = new Application();
   await app.init({ background: "#3a5a2a", resizeTo: window, antialias: false });
   $("game").appendChild(app.canvas);
@@ -58,7 +58,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
     }
     console.error("[net] connect failed", e);
     document.body.classList.remove("playing"); // back to landing
-    return;
+    return false; // let the caller re-enable Play so another map can be tried without reload
   }
 
   const world = new World(app, { groundTiles, crystals, playerAnims, props }, net.room, net.$, zone);
@@ -436,6 +436,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
 
   // wallet was connected on the landing page → treat as connected (it's our identity)
   onConnected(walletAddr);
+  return true;
 }
 
 // ===== Landing / start page controller (shown first; game boots on Play/View) =====
@@ -469,10 +470,19 @@ function initLanding(): void {
     started = true;
     document.body.classList.add("playing");
     startBgm(); // user gesture → autoplay allowed
-    enterGame(addr, auth);
+    if (!(await enterGame(addr, auth))) started = false; // failed (e.g. gate) → allow trying another map
   };
   $("playBtn").addEventListener("click", enterWithWallet);
   $("landingWallet").addEventListener("click", enterWithWallet);
+  // landing map picker — set ?zone in the URL (enterGame reads it) then start straight in, no reload.
+  // The click is the wallet-connect user gesture. Gated zones show the gate popup if you don't hold enough.
+  document.querySelectorAll<HTMLButtonElement>("#landing .lzone").forEach((b) => {
+    b.addEventListener("click", () => {
+      const z = b.dataset.zone || "village";
+      history.replaceState({}, "", z === "village" ? location.pathname : `?zone=${z}`);
+      enterWithWallet();
+    });
+  });
 
   // sub-page nav (How to Play / Whitepaper / Docs)
   document.querySelectorAll<HTMLElement>("[data-page]").forEach((a) =>

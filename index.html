@@ -235,6 +235,17 @@
     @keyframes pixelGlow { 0%,100% { text-shadow: 4px 4px 0 #0c1830, 0 0 12px rgba(143,228,245,.4); }
       50% { text-shadow: 4px 4px 0 #0c1830, 0 0 26px rgba(143,228,245,.95), 0 0 40px rgba(58,166,216,.5); } }
     .hero .tag { font-size: 24px; line-height: 1.35; color: #e6f6ff; }
+    /* landing map picker */
+    .maps { position: relative; z-index: 1; max-width: 760px; margin: 6px auto 8px; padding: 0 22px; text-align: center; }
+    .maps h2 { font-family: 'Press Start 2P', monospace; font-size: 13px; color: #cfe0ff; margin-bottom: 16px; letter-spacing: 1px; }
+    .mapgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    @media (max-width: 560px) { .mapgrid { grid-template-columns: repeat(2, 1fr); } }
+    .lzone { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 18px 10px; cursor: pointer;
+      background: rgba(20,16,40,.66); border: 2px solid #3a3560; border-radius: 12px; color: #ece9ff; transition: .12s; }
+    .lzone:hover { border-color: #8fe4f5; background: rgba(40,34,72,.85); transform: translateY(-3px); }
+    .lzone .ic { font-size: 30px; line-height: 1; }
+    .lzone .nm { font-family: 'Press Start 2P', monospace; font-size: 10px; }
+    .lzone .mt { font-family: 'VT323', monospace; font-size: 16px; color: #9fb6d8; }
     .lstat .v { font-family: 'Press Start 2P', monospace; font-size: 15px; text-shadow: 2px 2px 0 #0c1830; }
     .lstat .v.live::before { font-size: 14px; }
     .lstat .k { font-size: 16px; line-height: 1.1; }
@@ -283,6 +294,16 @@
       <p class="tag">A top-down <b style="color:#8fe4f5">mine-to-earn</b> game on Solana. Ore spawns from the live <b style="color:#8fe4f5">blockhash</b> — mine it for coins, then redeem 1:1 for <b style="color:#8fe4f5">$HASHROCK</b>.</p>
       <div class="cta">
         <button id="playBtn">⛏ Play Now</button>
+      </div>
+    </section>
+
+    <section class="maps">
+      <h2>⛏ Choose your map</h2>
+      <div class="mapgrid">
+        <button class="lzone" data-zone="village"><span class="ic">🏘️</span><span class="nm">Village</span><span class="mt">Free · 1× ore</span></button>
+        <button class="lzone" data-zone="cave"><span class="ic">⛏</span><span class="nm">Cave</span><span class="mt">≥100 · 2× ore</span></button>
+        <button class="lzone" data-zone="forge"><span class="ic">🌋</span><span class="nm">Forge</span><span class="mt">≥500 · 3× ore</span></button>
+        <button class="lzone" data-zone="garden"><span class="ic">🌷</span><span class="nm">Garden</span><span class="mt">≥1000 · 4× ore</span></button>
       </div>
     </section>
 
