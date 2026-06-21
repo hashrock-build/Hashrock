@@ -80,21 +80,29 @@ export async function loadProps(): Promise<WorldProps> {
     def(vpx(3, 353, 11, 14), { anchorY: 1, tint: 0xc77dff }), // amethyst crystal (red gem → purple)
     def(vpx(19, 353, 11, 14), { anchorY: 1 }),               // blue crystal gem
   ];
-  // forge props — cut from the Rocks sheet by exact sprite bounds (component scan), recoloured.
-  const rk: Texture = await Assets.load("/assets/props/Rocks.png");
-  rk.source.scaleMode = "nearest";
-  const rpx = (x: number, y: number, w: number, h: number) => new Texture({ source: rk.source, frame: new Rectangle(x, y, w, h) });
-  const OBSID = 0x5a3a30; // dark red-brown obsidian tint for boulders
-  const forgeRocks = [                                  // big BLOCKING obsidian formations
-    def(rpx(2, 19, 28, 43), { anchorY: 0.92, tint: OBSID }),   // tall boulder
-    def(rpx(35, 19, 26, 27), { anchorY: 0.9, tint: OBSID }),   // round boulder
-    def(rpx(2, 115, 28, 43), { anchorY: 0.92, tint: OBSID }),  // tall boulder (variant)
-    def(rpx(35, 115, 26, 27), { anchorY: 0.9, tint: OBSID }),  // round boulder (variant)
+  // forge props — REAL forge art cut pixel-exact (component scan, no clipping) from the dedicated
+  // Pixel Crawler Forge pack tileset (public/assets/props/Forge_Tiles.png). No recolour needed —
+  // these are already on-theme (dark stone + molten-orange highlights).
+  const fk: Texture = await Assets.load("/assets/props/Forge_Tiles.png");
+  fk.source.scaleMode = "nearest";
+  const fpx = (x: number, y: number, w: number, h: number) => new Texture({ source: fk.source, frame: new Rectangle(x, y, w, h) });
+  const forgeRocks = [                                  // BLOCKING forge clutter (statues + barrels + crates)
+    def(fpx(194, 150, 28, 58), { anchorY: 0.97 }),  // dwarf golem statue (tall centerpiece)
+    def(fpx(226, 164, 28, 44), { anchorY: 0.97 }),  // anvil-on-pedestal statue
+    def(fpx(110, 249, 18, 23), { anchorY: 0.95 }),  // skull barrel (red)
+    def(fpx(128, 249, 16, 23), { anchorY: 0.95 }),  // wooden barrel
+    def(fpx(144, 249, 16, 23), { anchorY: 0.95 }),  // ember barrel
+    def(fpx(110, 282, 17, 29), { anchorY: 0.95 }),  // quench (water) barrel — full height (was clipped)
+    def(fpx(164, 249, 22, 23), { anchorY: 0.95 }),  // iron-bound crate
+    def(fpx(186, 249, 22, 23), { anchorY: 0.95 }),  // iron-bound crate (variant)
   ];
-  const forgeDecor = [                                 // tall glowing LAVA CRYSTAL spikes (decor)
-    def(rpx(146, 279, 12, 25), { anchorY: 1, tint: 0xff5a2a }),  // big red lava crystal
-    def(rpx(146, 279, 12, 25), { anchorY: 1, tint: 0xff9a2a }),  // big orange lava crystal
-    def(rpx(179, 289, 10, 15), { anchorY: 1, tint: 0xffb24a }),  // small amber crystal
+  const forgeDecor = [                                 // non-blocking ground dressing (mostly loose rubble)
+    def(fpx(83, 99, 9, 11), { anchorY: 0.9 }),      // loose stone chunk
+    def(fpx(100, 100, 7, 9), { anchorY: 0.9 }),     // small stone
+    def(fpx(116, 115, 10, 8), { anchorY: 0.9 }),    // broken brick
+    def(fpx(67, 101, 10, 6), { anchorY: 0.9 }),     // flat slab
+    def(fpx(195, 33, 10, 13), { anchorY: 0.95 }),   // glowing lava vent (orange-ring accent)
+    def(fpx(226, 212, 28, 28), { anchorY: 0.95 }),  // forge crucible / mould (occasional)
   ];
 
   cache = {

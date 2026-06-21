@@ -320,17 +320,55 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge", boulderRate: nu
     if (cur[i]) { terrain[i] = T_WALL; blocked[i] = 1; }
     else terrain[i] = FLOOR;
   }
-  // sparse, clean dressing on the floor (skip the spawn room): occasional standalone boulder +
-  // a light scatter of small loose stones. No clusters — keep the cavern open and uncluttered.
-  for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
-    const i = idx(x, y);
-    if (terrain[i] !== FLOOR) continue;
-    if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
-    const r = cellHash(x + 11 + seed, y + 5 + seed);
-    if (r < boulderRate) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder (cave rocks / forge obsidian)
-    else if (decorKind === "cave" && r < boulderRate + 0.013) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stones (cave only — forge rocks are big)
-    else if (cellHash(x + 5 + seed, y + 17 + seed) < decorRate) // flora/crystals (cave) or lava crystals (forge)
-      decor.push({ gx: x, gy: y, type: decorKind === "forge" ? PropType.FORGE_DECOR : PropType.CAVE_DECOR, v: vh(x, y, 6) });
+  const farSpawn = (x: number, y: number) => Math.abs(x - C.x) >= 5 || Math.abs(y - C.y) >= 5;
+  if (decorKind === "forge") {
+    // ── Organized forge dressing. Random scatter read as "berantakan", so the forge places props
+    // DELIBERATELY: lone statue monuments in open clearings + tidy storage ROWS of barrels/crates,
+    // on a jittered coarse grid. Between stations the floor stays clean (light rubble + lava vents).
+    // forgeRocks idx: 0 statue, 1 anvil-statue, 2..5 barrels, 6..7 crates. forgeDecor idx: 0..3 rubble, 4 lava-vent, 5 crucible.
+    const rockV = (k: number) => (k + 0.5) / 8, decorV = (k: number) => (k + 0.5) / 6;
+    const isFloor = (x: number, y: number) => inB(x, y) && terrain[idx(x, y)] === FLOOR && !blocked[idx(x, y)];
+    const clearing = (x: number, y: number, r: number) => { // Chebyshev-r block all clear floor
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!isFloor(x + dx, y + dy)) return false;
+      return true;
+    };
+    const putRock = (x: number, y: number, k: number) => { props.push({ gx: x, gy: y, type: PropType.ROCK, v: rockV(k) }); blocked[idx(x, y)] = 1; };
+    const putDecor = (x: number, y: number, k: number) => { if (isFloor(x, y)) decor.push({ gx: x, gy: y, type: PropType.FORGE_DECOR, v: decorV(k) }); };
+    const STEP = 8;
+    for (let gy = 6; gy < H - 6; gy += STEP) for (let gx = 6; gx < W - 6; gx += STEP) {
+      const hsh = cellHash(gx * 7 + seed, gy * 13 + seed + 1);
+      const jx = gx + Math.floor(cellHash(gx + 1, gy + 2) * 5) - 2;
+      const jy = gy + Math.floor(cellHash(gx + 3, gy + 4) * 5) - 2;
+      if (!farSpawn(jx, jy)) continue;
+      if (hsh < 0.30) {                                  // lone statue monument (sits in a 3×3 clearing)
+        if (clearing(jx, jy, 1)) { putRock(jx, jy, cellHash(jx, jy) < 0.5 ? 0 : 1); putDecor(jx - 1, jy + 1, 0); putDecor(jx + 1, jy + 1, 1); }
+      } else if (hsh < 0.56) {                            // tidy storage row of 3 barrels/crates (open strip)
+        if (clearing(jx + 1, jy, 2)) {
+          for (let k = 0; k < 3; k++) putRock(jx + k, jy, 2 + Math.floor(cellHash(jx + k + 9, jy + seed) * 6)); // barrels/crates
+          putDecor(jx, jy + 1, Math.floor(cellHash(jx, jy) * 4)); putDecor(jx + 2, jy + 1, 4); // rubble + a lava vent in front
+        }
+      }
+    }
+    // light, even rubble + lava-vent sprinkle so the floor isn't bare (kept sparse on purpose)
+    for (let y = 3; y < H - 3; y++) for (let x = 3; x < W - 3; x++) {
+      if (!isFloor(x, y) || !farSpawn(x, y)) continue;
+      const r = cellHash(x + 5 + seed, y + 17 + seed);
+      if (r < 0.016) putDecor(x, y, Math.floor(cellHash(x, y + 1) * 4)); // loose rubble (0..3)
+      else if (r < 0.024) putDecor(x, y, 4);                            // glowing lava vent
+      else if (r < 0.027) putDecor(x, y, 5);                            // crucible (rare)
+    }
+  } else {
+    // Cave: sparse, clean dressing — occasional standalone boulder + light loose-stone scatter.
+    for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
+      const i = idx(x, y);
+      if (terrain[i] !== FLOOR) continue;
+      if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
+      const r = cellHash(x + 11 + seed, y + 5 + seed);
+      if (r < boulderRate) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder
+      else if (r < boulderRate + 0.013) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stones
+      else if (cellHash(x + 5 + seed, y + 17 + seed) < decorRate)
+        decor.push({ gx: x, gy: y, type: PropType.CAVE_DECOR, v: vh(x, y, 6) });
+    }
   }
 
   // 6) freeCells = floor reachable AFTER boulders (a boulder in a 1-wide gap can't strand ore)
