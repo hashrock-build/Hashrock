@@ -90,21 +90,28 @@ export class GroundLayer {
       floor: (gx, gy) => { const b = Math.round((0.5 + vnoise(gx, gy, 7, 3) * 0.22) * 255); return (b << 16) | (b << 8) | b; }, // grey stone
       fill: () => 0x241d15,   // near-black rock interior
       rim: 0x6a5640, rimA: 0.5, // warm rock rim
-      grass: { color: 0x6aa83e, width: 3 }, // green moss ring hugging the floor side of every "hill" edge
+      edge: { color: 0x6aa83e, width: 3 }, // green moss ring hugging the floor side of every "hill" edge
     });
   }
   private buildForge(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
     this.cavernGround(app, mapW, mapH, terrain, g, {
       floor: (gx, gy) => { const b = 0.26 + vnoise(gx, gy, 7, 3) * 0.14; return (Math.round(b * 255) << 16) | (Math.round(b * 0.5 * 255) << 8) | Math.round(b * 0.42 * 255); }, // dark obsidian
-      fill: (fx, fy) => { const gl = 0.55 + vnoise(fx, fy, 3, 8) * 0.45; return (255 << 16) | (Math.round(120 * gl) << 8) | 16; }, // glowing molten orange
-      rim: 0xffb24a, rimA: 0.6, // bright lava edge glow
+      // molten lava: two-octave noise so the surface has hot yellow cores bleeding into deep orange
+      fill: (fx, fy) => {
+        const gl = vnoise(fx, fy, 3, 8) * 0.6 + vnoise(fx, fy, 9, 2) * 0.4; // 0..1 heat
+        const grn = Math.round(70 + 150 * gl);   // 70 (deep orange) → 220 (near-yellow hot core)
+        const blu = Math.round(8 + 26 * gl);      // faint warm lift in the hottest spots
+        return (255 << 16) | (grn << 8) | blu;
+      },
+      rim: 0xffd06a, rimA: 0.7, // bright incandescent lip at the lava edge
+      edge: { color: 0xff7a2a, width: 4, alpha: 0.55 }, // ember glow spilling from the lava onto the floor
     });
   }
 
   // Shared supersampled cavern render (rock void OR lava lake, by palette). Uses the DIRT dual-grid
   // (brown, no green) so tinting is clean. Supersampled 2× + blurred → smooth rounded edges.
   private cavernGround(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles,
-    P: { floor: (gx: number, gy: number) => number; fill: (fx: number, fy: number) => number; rim: number; rimA: number; grass?: { color: number; width: number } }) {
+    P: { floor: (gx: number, gy: number) => number; fill: (fx: number, fy: number) => number; rim: number; rimA: number; edge?: { color: number; width: number; alpha?: number } }) {
     const at = (gx: number, gy: number) => (gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_WALL);
 
     // ── supersampled + blurred wall field (rounded contours) ──
@@ -150,11 +157,11 @@ export class GroundLayer {
           }
 
         const fox = ox * S, foy = oy * S, fc = CHUNK * S;
-        // grass ring — a moss border on the FLOOR side, hugging every wall ("hill") edge. Width is in
-        // fine cells (2 = one tile); alpha is strongest right at the rock and fades outward, so it reads
-        // as grass creeping out from the hills. Cave only (forge has no grass).
-        if (P.grass) {
-          const R = P.grass.width;
+        // edge ring — a coloured border on the FLOOR side, hugging every wall edge. Width is in fine
+        // cells (2 = one tile); alpha is strongest right at the wall and fades outward. Cave uses it as
+        // green moss creeping from the hills; the forge uses it as an ember glow spilling off the lava.
+        if (P.edge) {
+          const R = P.edge.width;
           for (let fy = foy; fy < foy + fc && fy < fh; fy++)
             for (let fx = fox; fx < fox + fc && fx < fw; fx++) {
               if (w(fx, fy)) continue; // floor side only
@@ -164,7 +171,7 @@ export class GroundLayer {
               if (d > R) continue; // too far from any wall
               const s = new Sprite(g.caveFloor);
               s.x = (fx - fox) * SUB; s.y = (fy - foy) * SUB; s.setSize(SUB);
-              s.tint = P.grass.color; s.alpha = 1 - (d - 1) / (R + 1); // edge = opaque, fading out
+              s.tint = P.edge.color; s.alpha = (1 - (d - 1) / (R + 1)) * (P.edge.alpha ?? 1); // edge = strongest, fading out
               c.addChild(s);
             }
         }
