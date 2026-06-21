@@ -225,7 +225,7 @@ const FLOOR = T_GRASS; // floor reuses code 0; the zone's tileset decides how it
 
 // Shared cellular-automata cavern carver. `seed` shifts the layout (each zone gets a different
 // cave); `flora` adds mushrooms/crystals (cave) vs bare rock (forge). buildCave/buildForge wrap it.
-function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
+function carveCaverns(seed: number, decorKind: "cave" | "forge", boulderRate: number, decorRate: number): VillageData {
   const W = MAP_W, H = MAP_H, N = W * H;
   const terrain = new Uint8Array(N);
   const blocked = new Uint8Array(N);
@@ -327,9 +327,9 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
     if (terrain[i] !== FLOOR) continue;
     if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
     const r = cellHash(x + 11 + seed, y + 5 + seed);
-    if (r < 0.012) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder
-    else if (r < 0.025) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stone
-    else if (cellHash(x + 5 + seed, y + 17 + seed) < 0.035) // flora/crystals (cave) or lava crystals (forge)
+    if (r < boulderRate) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder (cave rocks / forge obsidian)
+    else if (decorKind === "cave" && r < boulderRate + 0.013) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stones (cave only — forge rocks are big)
+    else if (cellHash(x + 5 + seed, y + 17 + seed) < decorRate) // flora/crystals (cave) or lava crystals (forge)
       decor.push({ gx: x, gy: y, type: decorKind === "forge" ? PropType.FORGE_DECOR : PropType.CAVE_DECOR, v: vh(x, y, 6) });
   }
 
@@ -342,5 +342,5 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
 }
 
 // Cave zone (seed 0 = the original cave, unchanged) + Forge zone (different seed, no flora).
-export function buildCave(): VillageData { return carveCaverns(0, "cave"); }
-export function buildForge(): VillageData { return carveCaverns(73, "forge"); }
+export function buildCave(): VillageData { return carveCaverns(0, "cave", 0.012, 0.035); }
+export function buildForge(): VillageData { return carveCaverns(73, "forge", 0.014, 0.06); } // denser obsidian + lava crystals

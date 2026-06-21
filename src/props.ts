@@ -29,7 +29,8 @@ export interface WorldProps {
   crops: PropDef[];
   decor: PropDef[];
   caveDecor: PropDef[]; // M5 cave flora/crystals — mushrooms + gems (sliced from Vegetation.png)
-  forgeDecor: PropDef[]; // M5 forge lava crystals (gem sprites recoloured molten)
+  forgeDecor: PropDef[]; // M5 forge lava crystal spikes
+  forgeRocks: PropDef[]; // M5 forge obsidian boulders (blocking)
 }
 
 const SCALE = 2;
@@ -79,11 +80,21 @@ export async function loadProps(): Promise<WorldProps> {
     def(vpx(3, 353, 11, 14), { anchorY: 1, tint: 0xc77dff }), // amethyst crystal (red gem → purple)
     def(vpx(19, 353, 11, 14), { anchorY: 1 }),               // blue crystal gem
   ];
-  // forge lava crystals — same gem sprites recoloured molten red/orange
-  const forgeDecor = [
-    def(vpx(3, 353, 11, 14), { anchorY: 1, tint: 0xff5a2a }),  // glowing red lava crystal
-    def(vpx(19, 353, 11, 14), { anchorY: 1, tint: 0xff9a2a }), // orange lava crystal (blue gem → orange)
-    def(vpx(49, 338, 14, 14), { anchorY: 1, tint: 0x6a4030 }), // charred obsidian shard (big mushroom recoloured dark)
+  // forge props — cut from the Rocks sheet by exact sprite bounds (component scan), recoloured.
+  const rk: Texture = await Assets.load("/assets/props/Rocks.png");
+  rk.source.scaleMode = "nearest";
+  const rpx = (x: number, y: number, w: number, h: number) => new Texture({ source: rk.source, frame: new Rectangle(x, y, w, h) });
+  const OBSID = 0x5a3a30; // dark red-brown obsidian tint for boulders
+  const forgeRocks = [                                  // big BLOCKING obsidian formations
+    def(rpx(2, 19, 28, 43), { anchorY: 0.92, tint: OBSID }),   // tall boulder
+    def(rpx(35, 19, 26, 27), { anchorY: 0.9, tint: OBSID }),   // round boulder
+    def(rpx(2, 115, 28, 43), { anchorY: 0.92, tint: OBSID }),  // tall boulder (variant)
+    def(rpx(35, 115, 26, 27), { anchorY: 0.9, tint: OBSID }),  // round boulder (variant)
+  ];
+  const forgeDecor = [                                 // tall glowing LAVA CRYSTAL spikes (decor)
+    def(rpx(146, 279, 12, 25), { anchorY: 1, tint: 0xff5a2a }),  // big red lava crystal
+    def(rpx(146, 279, 12, 25), { anchorY: 1, tint: 0xff9a2a }),  // big orange lava crystal
+    def(rpx(179, 289, 10, 15), { anchorY: 1, tint: 0xffb24a }),  // small amber crystal
   ];
 
   cache = {
@@ -101,6 +112,7 @@ export async function loadProps(): Promise<WorldProps> {
     decor: decor.map((t) => def(t, { anchorY: 0.88 })),
     caveDecor,
     forgeDecor,
+    forgeRocks,
   };
   return cache;
 }
