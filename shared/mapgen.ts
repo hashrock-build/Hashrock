@@ -21,6 +21,7 @@ export enum PropType {
   TREE, BUSH, FLOWER, FERN, TUFT, ROCK, HOUSE, FENCE_H, FENCE_POST, SCARECROW, CROP, DECOR,
   CAVE_DECOR, // M5 cave flora/crystals (mushrooms + gems)
   FORGE_DECOR, // M5 forge lava crystals
+  GARDEN_DECOR, // M5 garden flowers
 }
 
 export interface Placed { gx: number; gy: number; type: PropType; v: number; }
@@ -225,7 +226,7 @@ const FLOOR = T_GRASS; // floor reuses code 0; the zone's tileset decides how it
 
 // Shared cellular-automata cavern carver. `seed` shifts the layout (each zone gets a different
 // cave); `flora` adds mushrooms/crystals (cave) vs bare rock (forge). buildCave/buildForge wrap it.
-function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
+function carveCaverns(seed: number, decorKind: "cave" | "forge" | "garden"): VillageData {
   const W = MAP_W, H = MAP_H, N = W * H;
   const terrain = new Uint8Array(N);
   const blocked = new Uint8Array(N);
@@ -357,6 +358,57 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
       else if (r < 0.024) putDecor(x, y, 4);                            // glowing lava vent
       else if (r < 0.027) putDecor(x, y, 5);                            // crucible (rare)
     }
+  } else if (decorKind === "garden") {
+    // ── Formal garden: cypress "hedgerows" (tidy rows of conifers), flower beds (a shrub/urn ringed by
+    // flowers), and a rare fountain/bench landmark, on a jittered grid — plus a generous flower sprinkle
+    // (the garden is colourful). gardenRocks idx: 0..1 cypress, 2 shrub, 3..4 urn, 5 bench, 6 statue
+    // fountain, 7 tiered fountain, 8 plain statue. gardenDecor idx: 0..7 flowers.
+    const rockV = (k: number) => (k + 0.5) / 9, decorV = (k: number) => (k + 0.5) / 8;
+    const isFloor = (x: number, y: number) => inB(x, y) && terrain[idx(x, y)] === FLOOR && !blocked[idx(x, y)];
+    const clearing = (x: number, y: number, r: number) => {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!isFloor(x + dx, y + dy)) return false;
+      return true;
+    };
+    const putRock = (x: number, y: number, k: number) => { if (isFloor(x, y)) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: rockV(k) }); blocked[idx(x, y)] = 1; } };
+    const putDecor = (x: number, y: number, k: number) => { if (isFloor(x, y)) decor.push({ gx: x, gy: y, type: PropType.GARDEN_DECOR, v: decorV(k) }); };
+    const fl = (x: number, y: number) => Math.floor(cellHash(x, y + 1) * 8); // a flower variant 0..7
+    const STEP = 7;
+    for (let gy = 6; gy < H - 6; gy += STEP) for (let gx = 6; gx < W - 6; gx += STEP) {
+      const hsh = cellHash(gx * 9 + seed + 2, gy * 7 + seed + 5);
+      const jx = gx + Math.floor(cellHash(gx + 2, gy + 5) * 5) - 2;
+      const jy = gy + Math.floor(cellHash(gx + 6, gy + 1) * 5) - 2;
+      if (!farSpawn(jx, jy)) continue;
+      if (hsh < 0.24) {                                   // cypress hedgerow — a tidy line of 3 conifers
+        if (clearing(jx + 1, jy, 1) && isFloor(jx + 2, jy)) {
+          for (let k = 0; k < 3; k++) putRock(jx + k, jy, cellHash(jx + k, jy) < 0.5 ? 0 : 1);
+          putDecor(jx, jy + 1, fl(jx, jy)); putDecor(jx + 2, jy + 1, fl(jx + 2, jy));
+        }
+      } else if (hsh < 0.40) {                            // flower bed — a shrub/urn ringed by flowers
+        if (clearing(jx, jy, 1)) {
+          putRock(jx, jy, cellHash(jx, jy) < 0.5 ? 2 : (cellHash(jx, jy) < 0.75 ? 3 : 4));
+          for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1]] as [number, number][])
+            if (cellHash(jx + dx + 3, jy + dy + 7) < 0.7) putDecor(jx + dx, jy + dy, fl(jx + dx, jy + dy));
+        }
+      } else if (hsh < 0.62) {                            // statue / fountain landmark (frequent), ringed by flowers
+        if (clearing(jx, jy, 2)) {
+          const k = cellHash(jx, jy);
+          putRock(jx, jy, k < 0.30 ? 7 : k < 0.55 ? 6 : k < 0.80 ? 8 : 5); // 30% tiered fountain, 25% statue fountain, 25% statue, 20% bench
+          for (const [dx, dy] of [[-2, 1], [2, 1], [-2, -1], [2, -1], [0, 2]] as [number, number][]) putDecor(jx + dx, jy + dy, fl(jx + dx, jy + dy));
+        }
+      }
+    }
+    // flower border: EVERY floor cell sharing an edge with a hedge wall gets a flower (manicured beds
+    // line every hedge — "bunga di setiap garis antara tile dan wall")
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = idx(x, y);
+      if (terrain[i] !== FLOOR || blocked[i] || !farSpawn(x, y)) continue;
+      if (terrain[idx(x - 1, y)] === T_WALL || terrain[idx(x + 1, y)] === T_WALL || terrain[idx(x, y - 1)] === T_WALL || terrain[idx(x, y + 1)] === T_WALL)
+        putDecor(x, y, fl(x, y));
+    }
+    for (let y = 3; y < H - 3; y++) for (let x = 3; x < W - 3; x++) { // lighter open-lawn flower sprinkle
+      if (!isFloor(x, y) || !farSpawn(x, y)) continue;
+      if (cellHash(x + 5 + seed, y + 17 + seed) < 0.03) putDecor(x, y, fl(x, y));
+    }
   } else {
     // ── Organized cave dressing. Like the forge, props are placed in deliberate ORGANIC clusters
     // (groves), not random scatter: mushroom groves (a big/giant mushroom ringed by small ones),
@@ -417,3 +469,4 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
 // Cave zone (seed 0 = the original cave, unchanged) + Forge zone (different seed, no flora).
 export function buildCave(): VillageData { return carveCaverns(0, "cave"); }
 export function buildForge(): VillageData { return carveCaverns(73, "forge"); }
+export function buildGarden(): VillageData { return carveCaverns(151, "garden"); }

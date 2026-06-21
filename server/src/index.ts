@@ -43,6 +43,7 @@ const gameServer = new Server({ transport: new WebSocketTransport({ server: http
 gameServer.define("mine", MineRoom);                       // village zone (default)
 gameServer.define("cave", MineRoom, { zone: "cave" });     // M5 cave/dungeon zone
 gameServer.define("forge", MineRoom, { zone: "forge" });   // M5 forge/volcanic zone (VIP tier)
+gameServer.define("garden", MineRoom, { zone: "garden" }); // M5 garden zone (mid VIP tier)
 
 gameServer.listen(port);
-console.log(`HASHROCK authoritative server → ws://localhost:${port}  (rooms: "mine", "cave", "forge")`);
+console.log(`HASHROCK authoritative server → ws://localhost:${port}  (rooms: "mine", "cave", "forge", "garden")`);

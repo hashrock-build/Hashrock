@@ -35,6 +35,11 @@ export function buildForge(P: WorldProps): Village {
   return adapt(gen.buildForge(), P, "forge");
 }
 
+/** M5 garden zone — hedge-enclosed lawns (shared/mapgen buildGarden). */
+export function buildGarden(P: WorldProps): Village {
+  return adapt(gen.buildGarden(), P, "garden");
+}
+
 function adapt(g: gen.VillageData, P: WorldProps, zone = "village"): Village {
   const lists: Record<gen.PropType, PropDef[] | PropDef> = {
     [gen.PropType.TREE]: P.trees,
@@ -42,7 +47,7 @@ function adapt(g: gen.VillageData, P: WorldProps, zone = "village"): Village {
     [gen.PropType.FLOWER]: P.flowers,
     [gen.PropType.FERN]: P.ferns,
     [gen.PropType.TUFT]: P.tufts,
-    [gen.PropType.ROCK]: zone === "forge" ? P.forgeRocks : zone === "cave" ? P.caveRocks : P.rocks, // forge clutter / cave growths / village rocks
+    [gen.PropType.ROCK]: zone === "forge" ? P.forgeRocks : zone === "cave" ? P.caveRocks : zone === "garden" ? P.gardenRocks : P.rocks, // forge clutter / cave growths / garden features / village rocks
     [gen.PropType.HOUSE]: P.houses,
     [gen.PropType.DECOR]: P.decor,
     [gen.PropType.CROP]: P.crops,
@@ -51,6 +56,7 @@ function adapt(g: gen.VillageData, P: WorldProps, zone = "village"): Village {
     [gen.PropType.SCARECROW]: P.scarecrow,
     [gen.PropType.CAVE_DECOR]: P.caveDecor,
     [gen.PropType.FORGE_DECOR]: P.forgeDecor,
+    [gen.PropType.GARDEN_DECOR]: P.gardenDecor,
   };
   const resolve = (pl: gen.Placed): Placed => {
     const entry = lists[pl.type];

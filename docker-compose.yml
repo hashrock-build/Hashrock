@@ -42,6 +42,7 @@ services:
       SPAWN_INTERVAL_SEC: ${SPAWN_INTERVAL_SEC:-60}
       CAVE_MIN_HOLD: ${CAVE_MIN_HOLD:-100}   # M5: $HASHROCK a wallet must hold to enter the cave zone
       FORGE_MIN_HOLD: ${FORGE_MIN_HOLD:-500} # M5: higher VIP gate for the forge zone
+      GARDEN_MIN_HOLD: ${GARDEN_MIN_HOLD:-250} # M5: mid VIP gate for the garden zone
       SOLVENCY_INTERVAL_MIN: ${SOLVENCY_INTERVAL_MIN:-10} # 1:1-backing reconciliation cadence (minutes)
       SOLVENCY_WEBHOOK_URL: ${SOLVENCY_WEBHOOK_URL:-}     # optional incoming webhook for solvency alerts
       SOLVENCY_TOL: ${SOLVENCY_TOL:-1}                    # allowed on-chain-above-DB dust before alerting

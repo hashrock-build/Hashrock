@@ -33,6 +33,8 @@ export interface WorldProps {
   caveDecor: PropDef[]; // M5 cave ground dressing — small mushrooms / coral / stalagmites / pebbles / moss
   forgeDecor: PropDef[]; // M5 forge lava crystal spikes
   forgeRocks: PropDef[]; // M5 forge obsidian boulders (blocking)
+  gardenRocks: PropDef[]; // M5 garden cypress/shrubs/urns/fountains (blocking)
+  gardenDecor: PropDef[]; // M5 garden flowers (ground dressing)
 }
 
 const SCALE = 2;
@@ -129,6 +131,34 @@ export async function loadProps(): Promise<WorldProps> {
     def(fpx(226, 212, 28, 28), { anchorY: 0.95 }),  // forge crucible / mould (occasional)
   ];
 
+  // M5 garden — REAL art cut pixel-exact (component scan, verified no clipping) from the dedicated
+  // Pixel Crawler Garden pack tileset. ⚠ LIST LENGTHS LOCKED (gardenRocks=9, gardenDecor=8): mapgen
+  // encodes the variant index as v=(k+0.5)/N (N=9 rocks, 8 decor).
+  const gk: Texture = await Assets.load("/assets/props/Garden_Tiles.png");
+  gk.source.scaleMode = "nearest";
+  const gpx = (x: number, y: number, w: number, h: number) => new Texture({ source: gk.source, frame: new Rectangle(x, y, w, h) });
+  const gardenRocks = [                                 // BLOCKING garden growths/features
+    def(gpx(152, 269, 31, 98), { anchorY: 0.95, scale: 1.6 }), // 0 cypress (tall conifer)
+    def(gpx(194, 270, 28, 97), { anchorY: 0.95, scale: 1.6 }), // 1 cypress (variant)
+    def(gpx(120, 312, 24, 38), { anchorY: 0.9 }),    // 2 shrub
+    def(gpx(400, 331, 16, 21), { anchorY: 0.95 }),   // 3 stone urn
+    def(gpx(417, 328, 14, 24), { anchorY: 0.95 }),   // 4 stone urn (variant)
+    def(gpx(67, 368, 74, 32), { anchorY: 0.85, scale: 1 }),   // 5 wooden bench (wide)
+    def(gpx(443, 100, 37, 68), { anchorY: 0.95 }),   // 6 statue fountain (landmark)
+    def(gpx(400, 2, 80, 94), { anchorY: 0.95, scale: 1.3, footW: 2, footH: 2 }), // 7 tiered fountain (centerpiece)
+    def(gpx(418, 420, 28, 54), { anchorY: 0.96, scale: 1.2 }), // 8 plain statue (patung)
+  ];
+  const gardenDecor = [                                // non-blocking flowers (the garden's colour)
+    def(gpx(144, 379, 16, 22), { anchorY: 0.9 }),   // 0 flowers
+    def(gpx(160, 375, 16, 23), { anchorY: 0.9 }),   // 1
+    def(gpx(176, 379, 16, 22), { anchorY: 0.9 }),   // 2
+    def(gpx(192, 375, 16, 23), { anchorY: 0.9 }),   // 3
+    def(gpx(144, 427, 16, 22), { anchorY: 0.9 }),   // 4
+    def(gpx(160, 423, 16, 23), { anchorY: 0.9 }),   // 5
+    def(gpx(176, 427, 16, 22), { anchorY: 0.9 }),   // 6
+    def(gpx(192, 423, 16, 23), { anchorY: 0.9 }),   // 7
+  ];
+
   cache = {
     trees: trees.map((t) => def(t, { anchorY: 0.95 })),
     bushes: bushFiles.map((t) => def(t, { anchorY: 0.88 })),
@@ -146,6 +176,8 @@ export async function loadProps(): Promise<WorldProps> {
     caveDecor,
     forgeDecor,
     forgeRocks,
+    gardenRocks,
+    gardenDecor,
   };
   return cache;
 }

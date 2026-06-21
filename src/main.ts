@@ -41,7 +41,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
 
   // M5 zone select (?zone=cave / ?zone=forge). Village is the default live world.
   const zParam = new URLSearchParams(location.search).get("zone");
-  const zone = zParam === "cave" ? "cave" : zParam === "forge" ? "forge" : "village";
+  const zone = zParam === "cave" ? "cave" : zParam === "forge" ? "forge" : zParam === "garden" ? "garden" : "village";
 
   let net;
   try {

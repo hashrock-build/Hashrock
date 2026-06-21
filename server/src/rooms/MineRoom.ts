@@ -31,9 +31,10 @@ const BASE_MINE_TIME = Number(process.env.BASE_MINE_TIME_SEC ?? 30);
 const SPAWN_INTERVAL = Number(process.env.SPAWN_INTERVAL_SEC ?? 60) * 1000;
 const CAVE_MIN_HOLD = Number(process.env.CAVE_MIN_HOLD ?? 100); // $HASHROCK gate to enter the cave zone
 const FORGE_MIN_HOLD = Number(process.env.FORGE_MIN_HOLD ?? 500); // higher VIP tier gate for the forge
+const GARDEN_MIN_HOLD = Number(process.env.GARDEN_MIN_HOLD ?? 250); // mid-tier gate for the garden zone
 // per-zone config: $HASHROCK hold-gate (0 = open) + ore spawn interval (ms)
-const ZONE_HOLD: Record<string, number> = { cave: CAVE_MIN_HOLD, forge: FORGE_MIN_HOLD };
-const ZONE_SPAWN_MS: Record<string, number> = { cave: 30_000, forge: 20_000 };
+const ZONE_HOLD: Record<string, number> = { cave: CAVE_MIN_HOLD, forge: FORGE_MIN_HOLD, garden: GARDEN_MIN_HOLD };
+const ZONE_SPAWN_MS: Record<string, number> = { cave: 30_000, forge: 20_000, garden: 30_000 };
 const UPGRADE_COST = 500; // DEMO sink (coins). Real upgrades = on-chain $HASHROCK (invariant #8).
 const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
 const DUR_PER_ORE = 2;     // axe durability lost per ore fully mined
@@ -77,8 +78,8 @@ export class MineRoom extends Room<MineState> {
     this.state.cap = ORE_CAP;
 
     // zone selects which deterministic map to host; the client renders the SAME map (shared gen)
-    this.zone = options?.zone === "cave" ? "cave" : options?.zone === "forge" ? "forge" : "village";
-    const map = this.zone === "cave" ? gen.buildCave() : this.zone === "forge" ? gen.buildForge() : gen.buildVillage();
+    this.zone = options?.zone === "cave" ? "cave" : options?.zone === "forge" ? "forge" : options?.zone === "garden" ? "garden" : "village";
+    const map = this.zone === "cave" ? gen.buildCave() : this.zone === "forge" ? gen.buildForge() : this.zone === "garden" ? gen.buildGarden() : gen.buildVillage();
     this.freeCells = map.freeCells;
     this.blocked = map.blocked;
     console.log(`[room] zone=${this.zone} freeCells=${this.freeCells.length}`);

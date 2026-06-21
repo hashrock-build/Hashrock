@@ -9,7 +9,7 @@ import { TILE, cellCenter, facingFrom, Facing } from "./topdown";
 import { clusterForHp, CRYSTAL_W, GroundTiles } from "./tiles";
 import { Player, PlayerAnims } from "./player";
 import { WorldProps } from "./props";
-import { MAP_W, MAP_H, idx, inB, buildVillage, buildCave, buildForge, Village } from "./village";
+import { MAP_W, MAP_H, idx, inB, buildVillage, buildCave, buildForge, buildGarden, Village } from "./village";
 import { GroundLayer } from "./ground";
 import { SKINS } from "../shared/items";
 import { VIP_TIERS } from "../shared/vip";
@@ -83,7 +83,7 @@ export class World {
     this.cb = cb;
     this.crystals = assets.crystals;
     this.oreScale = assets.crystals ? TILE / CRYSTAL_W : 1;
-    this.village = zone === "cave" ? buildCave(assets.props!) : zone === "forge" ? buildForge(assets.props!) : buildVillage(assets.props!);
+    this.village = zone === "cave" ? buildCave(assets.props!) : zone === "forge" ? buildForge(assets.props!) : zone === "garden" ? buildGarden(assets.props!) : buildVillage(assets.props!);
 
     this.scene = new Container();
     this.app.stage.addChild(this.scene);

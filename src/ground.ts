@@ -21,6 +21,7 @@ export class GroundLayer {
   constructor(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles, zone = "village") {
     if (zone === "cave") { this.buildCave(app, mapW, mapH, terrain, g); return; }
     if (zone === "forge") { this.buildForge(app, mapW, mapH, terrain, g); return; }
+    if (zone === "garden") { this.buildGarden(app, mapW, mapH, terrain, g); return; }
     const at = (gx: number, gy: number): number =>
       gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_GRASS;
     const dirtOn = (gx: number, gy: number) => (at(gx, gy) === T_DIRT ? 1 : 0);
@@ -105,6 +106,17 @@ export class GroundLayer {
       },
       rim: 0xffd06a, rimA: 0.7, // bright incandescent lip at the lava edge
       edge: { color: 0xff7a2a, width: 4, alpha: 0.55 }, // ember glow spilling from the lava onto the floor
+    });
+  }
+
+  // M5 garden: the "walls" are dense HEDGES, the floor is a lush manicured lawn. Same supersampled
+  // render as cave/forge, just a green palette + a light mowed-grass border along every hedge edge.
+  private buildGarden(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
+    this.cavernGround(app, mapW, mapH, terrain, g, {
+      floor: (gx, gy) => { const t = 0.55 + vnoise(gx, gy, 7, 3) * 0.28; return (Math.round(95 * t) << 16) | (Math.round(165 * t) << 8) | Math.round(60 * t); }, // lush lawn
+      fill: (fx, fy) => { const t = 0.45 + vnoise(fx, fy, 3, 8) * 0.25; return (Math.round(42 * t) << 16) | (Math.round(90 * t) << 8) | Math.round(30 * t); }, // dense dark hedge
+      rim: 0x9ad15a, rimA: 0.45, // sunlit leaf highlight on the hedge edge
+      edge: { color: 0xbfe89a, width: 2, alpha: 0.3 }, // light mowed-grass border hugging each hedge
     });
   }
 

@@ -27,7 +27,7 @@ export async function getNonce(): Promise<string | null> {
 
 export async function connect(name = "miner", playerId = getPlayerId(), auth?: { msg: string; sig: string }, zone = "village"): Promise<Net> {
   const client = new Client(wsBase());
-  const roomName = zone === "cave" ? "cave" : zone === "forge" ? "forge" : "mine"; // zones: village=mine, cave, forge
+  const roomName = zone === "cave" ? "cave" : zone === "forge" ? "forge" : zone === "garden" ? "garden" : "mine"; // zones: village=mine, cave, forge, garden
   const room = await client.joinOrCreate(roomName, { playerId, name, msg: auth?.msg, sig: auth?.sig });
   const $ = getStateCallbacks(room);
   return { room, $ };
