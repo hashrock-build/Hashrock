@@ -172,7 +172,7 @@ export class World {
     $(this.state).players.onAdd((p: NetPlayer, sid: string) => {
       if (sid === this.room.sessionId) {
         $(p).listen("coins", (v: number, prev: number) => {
-          if (prev !== undefined && v > prev) this.floatText(this.px, this.py, `+${v - prev}`);
+          if (prev !== undefined && v > prev) this.floatText(this.px, this.py, `+${Math.round((v - prev) * 100) / 100}`);
           this.onChange?.();
         });
         this.applySkin(p.skin);

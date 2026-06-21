@@ -15,6 +15,9 @@ import { initTouchControls } from "./touch";
 
 const $ = (id: string) => document.getElementById(id)!;
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
+// coins can be fractional (co-mined ore splits e.g. 0.5 / 0.5) — show up to 2 decimals, trimming
+// trailing zeros (3 → "3", 3.5 → "3.5", 3.333 → "3.33").
+const fmtCoins = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 let toastTimer: number | undefined;
 let lastHeld = 0; // latest on-chain $HASHROCK balance (from the "hashrock" message) — drives the VIP panel
@@ -71,10 +74,10 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   // ---- HUD render (authoritative state) ----
   const upgradeBtn = $("upgrade") as HTMLButtonElement;
   const render = () => {
-    $("coins").textContent = fmt(world.coins);
+    $("coins").textContent = fmtCoins(world.coins);
     $("treasury").textContent = fmt(world.treasury);
     $("count").textContent = `${world.oreCount}/${world.cap}`;
-    $("pcoins").textContent = fmt(world.coins);
+    $("pcoins").textContent = fmtCoins(world.coins);
     $("dur").textContent = String(world.durability);
     $("pdur").textContent = String(world.durability);
     if ($("profileModal").classList.contains("show")) { buildPickers(); updatePreview(); }
@@ -410,7 +413,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   });
   const openRedeem = () => {
     if (!connected) return void toast("connect your wallet first");
-    $("rcoins").textContent = fmt(world.coins);
+    $("rcoins").textContent = fmtCoins(world.coins);
     ($("redeemamount") as HTMLInputElement).value = "";
     ($("redeemconfirm") as HTMLButtonElement).disabled = false;
     closeModal("profileModal"); showModal("redeemModal");

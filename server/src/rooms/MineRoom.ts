@@ -602,7 +602,9 @@ export class MineRoom extends Room<MineState> {
           p.durability = Math.max(0, p.durability - DUR_PER_ORE);
           if (playerId) persist(db.setDurability(playerId, p.durability));
         }
-        const reward = Math.min(this.state.pool, Math.round(payout * (d / ore.maxHp)));
+        // fractional share: round to 6 decimals (matches $HASHROCK) instead of whole coins, so two
+        // miners of one ore each see their slice (e.g. 0.5 + 0.5). The pool keeps any rounding dust.
+        const reward = Math.min(this.state.pool, Math.round(payout * (d / ore.maxHp) * 1e6) / 1e6);
         if (reward <= 0) continue;
         this.state.pool -= reward;
         if (p) p.coins += reward;

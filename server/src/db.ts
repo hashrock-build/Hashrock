@@ -13,27 +13,45 @@ export async function initSchema(seedPool: number): Promise<void> {
     CREATE TABLE IF NOT EXISTS players (
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL DEFAULT 'miner',
-      coins      BIGINT NOT NULL DEFAULT 0 CHECK (coins >= 0),
+      coins      NUMERIC(20,6) NOT NULL DEFAULT 0 CHECK (coins >= 0),
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE IF NOT EXISTS economy (
       id       INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-      pool     BIGINT NOT NULL CHECK (pool >= 0),
-      creator  BIGINT NOT NULL DEFAULT 0,
-      treasury BIGINT NOT NULL
+      pool     NUMERIC(20,6) NOT NULL CHECK (pool >= 0),
+      creator  NUMERIC(20,6) NOT NULL DEFAULT 0,
+      treasury NUMERIC(20,6) NOT NULL
     );
     CREATE TABLE IF NOT EXISTS ledger (
       id            BIGSERIAL PRIMARY KEY,
       ts            TIMESTAMPTZ NOT NULL DEFAULT now(),
       kind          TEXT NOT NULL,
       player_id     TEXT,
-      amount        BIGINT NOT NULL DEFAULT 0,
-      pool_delta    BIGINT NOT NULL DEFAULT 0,
-      creator_delta BIGINT NOT NULL DEFAULT 0,
-      treasury_delta BIGINT NOT NULL DEFAULT 0,
+      amount        NUMERIC(20,6) NOT NULL DEFAULT 0,
+      pool_delta    NUMERIC(20,6) NOT NULL DEFAULT 0,
+      creator_delta NUMERIC(20,6) NOT NULL DEFAULT 0,
+      treasury_delta NUMERIC(20,6) NOT NULL DEFAULT 0,
       meta          JSONB
     );
   `);
+  // Migrate a pre-existing (BIGINT) economy to fractional coins: in-game coins now carry up to 6
+  // decimals (matching $HASHROCK), so co-miners of one ore each see their fractional share (e.g.
+  // 0.5). Lossless widen — values are preserved; runs once (guarded on the current column type).
+  const { rows: ct } = await pool.query(
+    `SELECT data_type FROM information_schema.columns WHERE table_name='players' AND column_name='coins'`);
+  if (ct[0] && ct[0].data_type !== "numeric") {
+    await pool.query(`
+      ALTER TABLE players ALTER COLUMN coins   TYPE NUMERIC(20,6);
+      ALTER TABLE economy ALTER COLUMN pool    TYPE NUMERIC(20,6);
+      ALTER TABLE economy ALTER COLUMN creator TYPE NUMERIC(20,6);
+      ALTER TABLE economy ALTER COLUMN treasury TYPE NUMERIC(20,6);
+      ALTER TABLE ledger  ALTER COLUMN amount        TYPE NUMERIC(20,6);
+      ALTER TABLE ledger  ALTER COLUMN pool_delta     TYPE NUMERIC(20,6);
+      ALTER TABLE ledger  ALTER COLUMN creator_delta  TYPE NUMERIC(20,6);
+      ALTER TABLE ledger  ALTER COLUMN treasury_delta TYPE NUMERIC(20,6);
+    `);
+    console.log("[db] migrated coin columns BIGINT → NUMERIC(20,6) (fractional coins)");
+  }
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS wallet TEXT`); // Solana address for redeem
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS body INT NOT NULL DEFAULT 0`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS skin INT NOT NULL DEFAULT 0`);
@@ -293,10 +311,12 @@ export async function settleMarketSale(listingId: number, buyerId: string, fee: 
 }
 
 export async function verifyInvariant(): Promise<{ ok: boolean; coins: number; treasury: number }> {
+  // Compare EXACTLY in SQL (NUMERIC) — JS floats can't be trusted for the fractional-coin equality.
   const { rows } = await pool.query(
-    `SELECT (SELECT COALESCE(SUM(coins),0) FROM players) AS pc, pool, creator, treasury FROM economy WHERE id = 1`);
-  const coins = n(rows[0].pc) + n(rows[0].pool) + n(rows[0].creator);
-  return { ok: coins === n(rows[0].treasury), coins, treasury: n(rows[0].treasury) };
+    `SELECT (SELECT COALESCE(SUM(coins),0) FROM players) AS pc, pool, creator, treasury,
+            ((SELECT COALESCE(SUM(coins),0) FROM players) + pool + creator = treasury) AS ok
+     FROM economy WHERE id = 1`);
+  return { ok: rows[0].ok === true, coins: n(rows[0].pc) + n(rows[0].pool) + n(rows[0].creator), treasury: n(rows[0].treasury) };
 }
 
 async function tx(fn: (c: pg.PoolClient) => Promise<void>): Promise<void> {
