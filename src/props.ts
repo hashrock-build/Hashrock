@@ -13,6 +13,7 @@ export interface PropDef {
   anchorY: number; // feet sit on the base row
   scale: number;
   tint?: number; // optional recolour (e.g. glowing cave crystals)
+  glow?: number; // optional bioluminescent halo colour (additive glow behind the sprite — cave flora)
 }
 
 export interface WorldProps {
@@ -79,25 +80,26 @@ export async function loadProps(): Promise<WorldProps> {
   cp.source.scaleMode = "nearest"; ct.source.scaleMode = "nearest";
   const ppx = (x: number, y: number, w: number, h: number) => new Texture({ source: cp.source, frame: new Rectangle(x, y, w, h) });
   const tpx = (x: number, y: number, w: number, h: number) => new Texture({ source: ct.source, frame: new Rectangle(x, y, w, h) });
+  const MGLOW = 0x9a8cff, CGLOW = 0xff5a6a; // bioluminescent halos — violet for mushrooms, red for coral
   const caveRocks = [                                  // BLOCKING cave growths (mushrooms + coral)
-    def(ppx(196, 49, 53, 45), { anchorY: 0.95 }),   // 0 medium mushroom
-    def(ppx(196, 1, 53, 45), { anchorY: 0.95 }),    // 1 medium mushroom (variant)
-    def(tpx(148, 114, 41, 44), { anchorY: 0.95 }),  // 2 red coral (medium)
-    def(tpx(193, 117, 46, 41), { anchorY: 0.95 }),  // 3 red coral cluster
-    def(ppx(99, 3, 87, 88), { anchorY: 0.96, scale: 1.7 }),   // 4 GIANT mushroom (landmark)
-    def(ppx(226, 96, 60, 96), { anchorY: 0.97, scale: 1.7 }), // 5 tall mushroom (landmark)
-    def(tpx(97, 117, 46, 59), { anchorY: 0.95 }),   // 6 big red coral (landmark)
+    def(ppx(196, 49, 53, 45), { anchorY: 0.95, glow: MGLOW }),   // 0 medium mushroom
+    def(ppx(196, 1, 53, 45), { anchorY: 0.95, glow: MGLOW }),    // 1 medium mushroom (variant)
+    def(tpx(148, 114, 41, 44), { anchorY: 0.95, glow: CGLOW }),  // 2 red coral (medium)
+    def(tpx(193, 117, 46, 41), { anchorY: 0.95, glow: CGLOW }),  // 3 red coral cluster
+    def(ppx(99, 3, 87, 88), { anchorY: 0.96, scale: 1.7, glow: MGLOW }),   // 4 GIANT mushroom (landmark)
+    def(ppx(226, 96, 60, 96), { anchorY: 0.97, scale: 1.7, glow: MGLOW }), // 5 tall mushroom (landmark)
+    def(tpx(97, 117, 46, 59), { anchorY: 0.95, glow: CGLOW }),   // 6 big red coral (landmark)
   ];
   const caveDecor = [                                 // non-blocking ground dressing
-    def(ppx(291, 3, 27, 28), { anchorY: 0.95 }),    // 0 small mushroom
-    def(ppx(322, 2, 27, 28), { anchorY: 0.95 }),    // 1 small mushroom
-    def(ppx(291, 35, 27, 28), { anchorY: 0.95 }),   // 2 small mushroom (drip)
-    def(ppx(257, 64, 14, 16), { anchorY: 0.95 }),   // 3 tiny mushroom
-    def(ppx(291, 68, 10, 11), { anchorY: 0.95 }),   // 4 tiny mushroom
+    def(ppx(291, 3, 27, 28), { anchorY: 0.95, glow: MGLOW }),    // 0 small mushroom
+    def(ppx(322, 2, 27, 28), { anchorY: 0.95, glow: MGLOW }),    // 1 small mushroom
+    def(ppx(291, 35, 27, 28), { anchorY: 0.95, glow: MGLOW }),   // 2 small mushroom (drip)
+    def(ppx(257, 64, 14, 16), { anchorY: 0.95, glow: MGLOW }),   // 3 tiny mushroom
+    def(ppx(291, 68, 10, 11), { anchorY: 0.95, glow: MGLOW }),   // 4 tiny mushroom
     def(tpx(210, 16, 12, 32), { anchorY: 1 }),      // 5 tall stalagmite
     def(tpx(226, 32, 12, 16), { anchorY: 1 }),      // 6 small stalagmite
-    def(tpx(149, 162, 23, 28), { anchorY: 0.95 }),  // 7 small coral
-    def(tpx(214, 163, 23, 24), { anchorY: 0.95 }),  // 8 small coral
+    def(tpx(149, 162, 23, 28), { anchorY: 0.95, glow: CGLOW }),  // 7 small coral
+    def(tpx(214, 163, 23, 24), { anchorY: 0.95, glow: CGLOW }),  // 8 small coral
     def(tpx(116, 24, 8, 7), { anchorY: 0.85 }),     // 9 pebble
     def(tpx(194, 67, 12, 8), { anchorY: 0.85 }),    // 10 pebbles
     def(tpx(179, 209, 74, 78), { anchorY: 0.6, scale: 1.4 }), // 11 moss patch (flat ground)

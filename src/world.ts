@@ -279,6 +279,7 @@ export class World {
       s.anchor.set(p.def.anchorX, p.def.anchorY); s.scale.set(p.def.scale); s.roundPixels = true;
       if (p.def.tint !== undefined) s.tint = p.def.tint;
       s.x = (p.gx + p.def.footW / 2) * TILE; s.y = (p.gy + p.def.footH) * TILE; s.zIndex = s.y;
+      if (p.def.glow !== undefined) this.addGlow(p.def.glow, s.x, s.y - s.height * 0.65, s.width * 1.5, this.entities, s.zIndex - 1);
       this.entities.addChild(s);
     }
     for (const d of this.village.decor) {
@@ -286,8 +287,34 @@ export class World {
       s.anchor.set(d.def.anchorX, d.def.anchorY); s.scale.set(d.def.scale); s.roundPixels = true;
       if (d.def.tint !== undefined) s.tint = d.def.tint;
       s.x = (d.gx + 0.5) * TILE; s.y = (d.gy + 1) * TILE;
+      if (d.def.glow !== undefined) this.addGlow(d.def.glow, s.x, s.y - s.height * 0.6, s.width * 1.5, this.decorLayer); // flat layer → add behind (before) the sprite
       this.decorLayer.addChild(s);
     }
+  }
+
+  // bioluminescent halo behind glowing cave flora (mushrooms/coral). One soft radial texture, reused;
+  // additive blend so multiple glows pool into ambient light. zIndex (entities) keeps it behind the prop.
+  private static _glowTex?: Texture;
+  private glowTex(): Texture {
+    if (!World._glowTex) {
+      const size = 96;
+      const cv = document.createElement("canvas"); cv.width = cv.height = size;
+      const ctx = cv.getContext("2d")!;
+      const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      g.addColorStop(0, "rgba(255,255,255,1)");
+      g.addColorStop(0.45, "rgba(255,255,255,0.42)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+      World._glowTex = Texture.from(cv);
+    }
+    return World._glowTex;
+  }
+  private addGlow(color: number, x: number, y: number, w: number, layer: Container, z?: number): void {
+    const gl = new Sprite(this.glowTex());
+    gl.anchor.set(0.5); gl.tint = color; gl.alpha = 0.5; gl.blendMode = "add";
+    gl.x = x; gl.y = y; gl.width = gl.height = w;
+    if (z !== undefined) gl.zIndex = z;
+    layer.addChild(gl);
   }
   private blockedAt(worldX: number, worldY: number): boolean {
     const gx = Math.floor(worldX / TILE), gy = Math.floor(worldY / TILE);
