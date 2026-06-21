@@ -397,13 +397,13 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge" | "garden"): Vil
         }
       }
     }
-    // flower border: EVERY floor cell sharing an edge with a hedge wall gets a flower (manicured beds
-    // line every hedge — "bunga di setiap garis antara tile dan wall")
+    // flower border: floor cells along a hedge edge get a flower, but only ~35% of them (a hash gate)
+    // so the beds line the hedges without crowding the whole maze.
     for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
       const i = idx(x, y);
       if (terrain[i] !== FLOOR || blocked[i] || !farSpawn(x, y)) continue;
-      if (terrain[idx(x - 1, y)] === T_WALL || terrain[idx(x + 1, y)] === T_WALL || terrain[idx(x, y - 1)] === T_WALL || terrain[idx(x, y + 1)] === T_WALL)
-        putDecor(x, y, fl(x, y));
+      const edge = terrain[idx(x - 1, y)] === T_WALL || terrain[idx(x + 1, y)] === T_WALL || terrain[idx(x, y - 1)] === T_WALL || terrain[idx(x, y + 1)] === T_WALL;
+      if (edge && cellHash(x + 3 + seed, y + 9 + seed) < 0.35) putDecor(x, y, fl(x, y));
     }
     for (let y = 3; y < H - 3; y++) for (let x = 3; x < W - 3; x++) { // lighter open-lawn flower sprinkle
       if (!isFloor(x, y) || !farSpawn(x, y)) continue;
