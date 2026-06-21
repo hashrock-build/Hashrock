@@ -480,9 +480,13 @@ export class MineRoom extends Room<MineState> {
   private async onRedeem(client: Client, m: { amount: number }): Promise<void> {
     const p = this.state.players.get(client.sessionId);
     const dest = this.wallet.get(client.sessionId);
-    const amount = Math.floor(m?.amount ?? 0);
+    const amount = Math.floor(Number(m?.amount));
     if (!p) return;
     if (!dest) return void client.send("redeemErr", { msg: "set your wallet address first" });
+    // MUST validate finite+positive BEFORE the range checks — a NaN/Infinity slips past `< MIN` and
+    // `> coins` (every comparison with NaN is false), which once wrote NaN into coins+treasury and
+    // broke state serialization for everyone. Reject non-finite amounts outright.
+    if (!Number.isFinite(amount) || amount <= 0) return void client.send("redeemErr", { msg: "invalid amount" });
     if (amount < REDEEM_MIN) return void client.send("redeemErr", { msg: `min redeem is ${REDEEM_MIN}` });
     if (amount > p.coins) return void client.send("redeemErr", { msg: "not enough coins" });
     const playerId = this.pid.get(client.sessionId)!;

@@ -109,6 +109,7 @@ export async function playerByWallet(wallet: string): Promise<string | null> {
 
 /** REDEEM: burn coins + reduce treasury backing (on-chain release happens separately). */
 export async function persistRedeem(playerId: string, amount: number): Promise<void> {
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error(`refusing non-finite redeem amount: ${amount}`); // NaN once corrupted coins+treasury
   await tx(async (c) => {
     await c.query(`UPDATE players SET coins = coins - $1 WHERE id = $2`, [amount, playerId]);
     await c.query(`UPDATE economy SET treasury = treasury - $1 WHERE id = 1`, [amount]);
