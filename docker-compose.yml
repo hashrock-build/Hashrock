@@ -57,6 +57,29 @@ services:
     volumes:
       # treasury secret is mounted read-only at runtime — NEVER baked into the image or git
       - ./server/.treasury.json:/run/treasury/.treasury.json:ro
+    # Health probe via Node (no curl/wget in the image): a NEW process hits /health, so it still runs
+    # even if the main event loop is hung — catching the "running but not accepting connections" state
+    # that took the API down. autoheal (below) restarts the container when this goes unhealthy.
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:2567/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 20s
+      timeout: 8s
+      retries: 3
+      start_period: 45s
+    labels:
+      - autoheal=true
+
+  # Watches containers labelled autoheal=true and restarts any that Docker marks unhealthy. Docker's
+  # own restart policy only fires on process EXIT, not on a hung-but-running process — this covers that.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    restart: unless-stopped
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 15        # check unhealthy containers every 15s
+      AUTOHEAL_START_PERIOD: 60    # grace before the first check
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   web:
     build:
