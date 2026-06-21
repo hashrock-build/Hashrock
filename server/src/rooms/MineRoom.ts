@@ -68,7 +68,8 @@ export class MineRoom extends Room<MineState> {
 
   async onCreate(options?: { zone?: string }): Promise<void> {
     this.setState(new MineState());
-    await db.initSchema(POOL_SEED);
+    // NOTE: schema is created/migrated ONCE at boot (index.ts) before the server listens. Re-running
+    // the DDL here per-room caused concurrent ALTERs to deadlock when several zones spin up at once.
     const eco = await db.getEconomy();
     this.state.pool = eco.pool;
     this.state.creator = eco.creator;
