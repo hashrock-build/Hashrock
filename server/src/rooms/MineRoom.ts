@@ -120,8 +120,8 @@ export class MineRoom extends Room<MineState> {
 
     const spawnMs = ZONE_SPAWN_MS[this.zone] ?? SPAWN_INTERVAL; // gated zones spawn faster
     this.clock.setInterval(() => this.spawnOre(), spawnMs);
-    this.clock.setInterval(() => this.pollDeposits(), 15000); // auto-credit incoming deposits
-    this.clock.setInterval(() => this.refreshTreasury(), 20000); // HUD treasury mirrors on-chain reserve
+    this.clock.setInterval(() => this.pollDeposits(), 30000); // auto-credit incoming deposits (eased to spare the RPC quota)
+    this.clock.setInterval(() => this.refreshTreasury(), 60000); // HUD treasury mirrors on-chain reserve (cached read)
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
     this.spawnOre();
     this.refreshTreasury();
@@ -144,10 +144,15 @@ export class MineRoom extends Room<MineState> {
     const nonce = (msg.trim().split("\n").pop() || "").trim();
     if (!consumeNonce(nonce)) throw new Error("login expired — reconnect");
 
-    // one on-chain balance read serves both the zone gate AND the VIP tier (avoid a second RPC)
-    const held = await chain.tokenBalance(addr);
+    // Only GATED zones (cave/forge) need an on-chain balance read on join. The free village must NOT
+    // block login on the RPC (a throttled RPC there = stuck "loading" after connect). Village VIP tier
+    // is filled in right after join when the client sends getHashrock (sendHashrock refreshes p.vip).
     const minHold = ZONE_HOLD[this.zone] ?? 0;
-    if (minHold > 0 && held < minHold) throw new Error(`the ${this.zone} requires holding ≥${minHold} $HASHROCK (you hold ${Math.floor(held)})`);
+    let held = 0;
+    if (minHold > 0) {
+      held = await chain.tokenBalance(addr);
+      if (held < minHold) throw new Error(`the ${this.zone} requires holding ≥${minHold} $HASHROCK (you hold ${Math.floor(held)})`);
+    }
 
     const playerId = addr;
     const name = (opts.name || "miner").slice(0, 16);

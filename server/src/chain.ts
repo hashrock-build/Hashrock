@@ -61,7 +61,9 @@ export async function initChain(): Promise<void> {
 // derive their position from it (the on-chain source of randomness). ---
 let latestBlockhash = "";
 export const currentBlockhash = (): string => latestBlockhash;
-export function startBlockhashRelayer(intervalMs = 2000): void {
+export function startBlockhashRelayer(intervalMs = 30000): void {
+  // 30s, not 2s: ore spawns at most every 20–60s and only needs a *recent* blockhash, so polling
+  // every 2s just burned the RPC quota (429 storms that stalled logins). 30s is plenty fresh.
   const poll = async () => {
     try { latestBlockhash = (await conn.getLatestBlockhash()).blockhash; }
     catch (e) { console.error("[relayer]", (e as Error).message); }
@@ -96,17 +98,30 @@ export function verifyWalletSig(address: string, message: string, sigB64: string
   } catch { return false; }
 }
 
+// Short-TTL balance cache. Join, getHashrock, the VIP refresh and the treasury watcher all read the
+// same balances repeatedly; without this they each hit the RPC and tripped Helius rate limits (429),
+// which then stalled logins. A few seconds of staleness is harmless for a gate/HUD/VIP read.
+const balCache = new Map<string, { v: number; t: number }>();
+const BAL_TTL_MS = 15000;
+async function cachedBalance(key: string, fetchRaw: () => Promise<number>): Promise<number> {
+  const now = Date.now();
+  const hit = balCache.get(key);
+  if (hit && now - hit.t < BAL_TTL_MS) return hit.v;
+  try { const v = fetchRaw(); const r = await v; balCache.set(key, { v: r, t: now }); return r; }
+  catch { return hit?.v ?? 0; } // on RPC failure fall back to last known (never throw → never hang a join)
+}
+
 /** On-chain $HASHROCK balance held by the treasury, in coins (the real reserve, shown in the HUD). */
 export async function treasuryBalance(): Promise<number> {
-  try { return toCoins(Number((await getAccount(conn, treasuryAta)).amount)); } catch { return 0; }
+  return cachedBalance("__treasury__", async () => toCoins(Number((await getAccount(conn, treasuryAta)).amount)));
 }
 
 /** On-chain $HASHROCK balance of an address in coins (0 if no token account yet). */
 export async function tokenBalance(address: string): Promise<number> {
-  try {
+  return cachedBalance(address, async () => {
     const ata = await getAssociatedTokenAddress(mint, new PublicKey(address));
     return toCoins(Number((await getAccount(conn, ata)).amount));
-  } catch { return 0; }
+  });
 }
 
 /** Thrown when a treasury send couldn't be confirmed AND couldn't be proven dead — the tx might
