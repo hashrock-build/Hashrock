@@ -15,6 +15,7 @@ import { consumeNonce } from "../nonce";
 import * as gen from "../../../shared/mapgen";
 import { SKINS, HAIRS, HATS, AXES, axePrice, skinPrice,
   AXE_MAX_LEVEL, axeLevel, setAxeLevelBits, effAxeMult, axeUpgradeCost } from "../../../shared/items";
+import { vipTier } from "../../../shared/vip";
 
 const TILE = gen.TILE;
 const MAP_W = gen.MAP_W, MAP_H = gen.MAP_H;
@@ -143,12 +144,10 @@ export class MineRoom extends Room<MineState> {
     const nonce = (msg.trim().split("\n").pop() || "").trim();
     if (!consumeNonce(nonce)) throw new Error("login expired — reconnect");
 
-    // gated zones (cave/forge): only wallets holding ≥ the zone's $HASHROCK threshold may enter
+    // one on-chain balance read serves both the zone gate AND the VIP tier (avoid a second RPC)
+    const held = await chain.tokenBalance(addr);
     const minHold = ZONE_HOLD[this.zone] ?? 0;
-    if (minHold > 0) {
-      const held = await chain.tokenBalance(addr);
-      if (held < minHold) throw new Error(`the ${this.zone} requires holding ≥${minHold} $HASHROCK (you hold ${Math.floor(held)})`);
-    }
+    if (minHold > 0 && held < minHold) throw new Error(`the ${this.zone} requires holding ≥${minHold} $HASHROCK (you hold ${Math.floor(held)})`);
 
     const playerId = addr;
     const name = (opts.name || "miner").slice(0, 16);
@@ -165,6 +164,7 @@ export class MineRoom extends Room<MineState> {
     p.axeLevels = prof.axeLevels; p.skinsOwned = prof.skinsOwned;
     p.durability = prof.durability;
     p.throughput = effAxeMult(prof.axe, axeLevel(prof.axeLevels, prof.axe));
+    p.vip = vipTier(held); // VIP Club tier from on-chain holdings (status/access only)
     this.state.players.set(client.sessionId, p);
     liveStats.online++;
     client.send("chainInfo", { treasury: chain.treasuryAddress(), mint: chain.mintAddress(), wallet: w ?? null });
@@ -464,6 +464,8 @@ export class MineRoom extends Room<MineState> {
   private async sendHashrock(client: Client): Promise<void> {
     const addr = this.wallet.get(client.sessionId);
     const amount = addr ? await chain.tokenBalance(addr) : 0;
+    const p = this.state.players.get(client.sessionId);
+    if (p) p.vip = vipTier(amount); // refresh VIP tier whenever the balance is re-read (buy/redeem/deposit)
     client.send("hashrock", { amount });
   }
 

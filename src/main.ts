@@ -7,6 +7,7 @@ import { signAndSend } from "./purchase";
 import { CHARACTERS } from "./player";
 import { CharacterPreview } from "./preview";
 import { SKINS, AXES, RARITY_COLOR, AXE_MAX_LEVEL, axeLevel, effAxeMult, axeUpgradeCost } from "../shared/items";
+import { VIP_TIERS, vipTier, vipToNext } from "../shared/vip";
 import { loadGroundTiles, loadCrystalFrames } from "./tiles";
 import { loadCharacters } from "./player";
 import { loadProps } from "./props";
@@ -16,6 +17,7 @@ const $ = (id: string) => document.getElementById(id)!;
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
 let toastTimer: number | undefined;
+let lastHeld = 0; // latest on-chain $HASHROCK balance (from the "hashrock" message) — drives the VIP panel
 function toast(msg: string): void {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(toastTimer);
@@ -193,9 +195,30 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   // ---- modal helpers ----
   const showModal = (id: string) => $(id).classList.add("show");
   const closeModal = (id: string) => $(id).classList.remove("show");
-  for (const id of ["profileModal", "redeemModal", "marketModal", "redeemDoneModal", "buyDoneModal", "upgradeModal", "otcModal"]) {
+  for (const id of ["profileModal", "redeemModal", "marketModal", "redeemDoneModal", "buyDoneModal", "upgradeModal", "otcModal", "vipModal"]) {
     $(id).addEventListener("click", (e) => { if (e.target === $(id)) closeModal(id); });
   }
+
+  // ---- VIP Club panel: tier ladder by $HASHROCK held (status/access only — never an earning boost) ----
+  const hex = (c: number) => `#${(c >>> 0).toString(16).padStart(6, "0")}`;
+  const buildVip = () => {
+    const cur = vipTier(lastHeld), { next, need } = vipToNext(lastHeld);
+    const curT = VIP_TIERS[cur];
+    $("vipStatus").innerHTML = cur > 0
+      ? `Your tier: <span style="color:${hex(curT.color)}">${curT.badge} ${curT.name}</span> · holding ${fmt(lastHeld)} $HASHROCK`
+      : `Not a VIP yet · holding ${fmt(lastHeld)} $HASHROCK`;
+    $("vipNext").textContent = next
+      ? `${fmt(need)} more $HASHROCK → ${next.name}`
+      : "You're at the top tier — Diamond 👑";
+    $("vipTiers").innerHTML = VIP_TIERS.filter((t) => t.id > 0).map((t) => {
+      const have = lastHeld >= t.min, isCur = t.id === cur;
+      return `<div class="prow" style="display:flex;justify-content:space-between;gap:8px;${isCur ? "outline:1px solid " + hex(t.color) + ";border-radius:6px;padding:2px 6px" : ""}">
+        <span style="color:${hex(t.color)};font-weight:700">${t.badge} ${t.name} ${have ? "✓" : ""}</span>
+        <span style="opacity:.75;text-align:right">≥${fmt(t.min)} · ${t.perk}</span></div>`;
+    }).join("");
+  };
+  $("vipBtn").addEventListener("click", () => { net!.room.send("getHashrock"); buildVip(); showModal("vipModal"); }); // refresh balance → handler rebuilds the open panel
+  $("vipClose").addEventListener("click", () => closeModal("vipModal"));
   $("profileClose").addEventListener("click", () => closeModal("profileModal"));
   $("redeemClose").addEventListener("click", () => closeModal("redeemModal"));
   $("marketClose").addEventListener("click", () => closeModal("marketModal"));
@@ -248,7 +271,7 @@ async function enterGame(walletAddr: string, auth: { msg: string; sig: string })
   }
 
   // ---- on-chain message handlers ----
-  net.room.onMessage("hashrock", (m: { amount: number }) => { $("phashrock").textContent = fmt(m.amount); });
+  net.room.onMessage("hashrock", (m: { amount: number }) => { lastHeld = m.amount; $("phashrock").textContent = fmt(m.amount); if ($("vipModal").classList.contains("show")) buildVip(); });
   net.room.onMessage("walletErr", (m: { msg: string }) => toast("⚠ " + m.msg));
   net.room.onMessage("nameSet", (m: { name: string }) => toast(`✅ username set: ${m.name}`));
   net.room.onMessage("redeemOk", (m: { amount: number; sig: string; url: string }) => {

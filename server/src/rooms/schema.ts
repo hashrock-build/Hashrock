@@ -27,6 +27,7 @@ export class PlayerState extends Schema {
   @type("number") axeLevels = 0;   // per-tier level packed 4 bits/tier (0 = level 1); upgraded 1→10
   @type("number") skinsOwned = 1;  // owned color-skins bitmask (bit i = skin i; bit 0 = free Grey)
   @type("number") durability = 100; // axe durability; drops while mining, restored by repair
+  @type("number") vip = 0;          // VIP Club tier (0..4) from on-chain $HASHROCK held — STATUS/ACCESS only, never an earning boost
 }
 
 export class MineState extends Schema {

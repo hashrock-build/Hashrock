@@ -12,6 +12,14 @@ import { WorldProps } from "./props";
 import { MAP_W, MAP_H, idx, inB, buildVillage, buildCave, buildForge, Village } from "./village";
 import { GroundLayer } from "./ground";
 import { SKINS } from "../shared/items";
+import { VIP_TIERS } from "../shared/vip";
+
+// VIP nameplate: prepend the tier badge glyph and tint the name by tier colour (white for non-VIP).
+function vipLabel(name: string, vip: number): { text: string; fill: string } {
+  const t = VIP_TIERS[vip] ?? VIP_TIERS[0];
+  const fill = vip > 0 ? `#${(t.color >>> 0).toString(16).padStart(6, "0")}` : "#ffffff";
+  return { text: t.badge ? `${t.badge} ${name}` : name, fill };
+}
 
 const MINE_RANGE = TILE * 1.6;
 const MOVE_SPEED = 130;        // px/sec (client prediction; server validates range)
@@ -19,7 +27,7 @@ const MOVE_SEND_MS = 80;       // throttle position updates to the server
 const BASE_MINE_TIME = 30;     // for the local progress bar only (server is authoritative)
 
 interface NetOre { id: number; gx: number; gy: number; hp: number; maxHp: number; blockhash: string; }
-interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; hair: number; hat: number; axe: number; axesOwned: number; axeLevels: number; body: number; durability: number; }
+interface NetPlayer { x: number; y: number; name: string; coins: number; throughput: number; miningOreId: number; skin: number; hair: number; hat: number; axe: number; axesOwned: number; axeLevels: number; body: number; durability: number; vip: number; }
 
 export interface WorldAssets {
   groundTiles?: GroundTiles;
@@ -56,7 +64,7 @@ export class World {
   private oreGfx = new Map<number, Container>();
   private oreBucket = new Map<number, number>();
   private anims?: PlayerAnims[];
-  private others = new Map<string, { c: Container; ctl?: Player; fallback?: Graphics; skin: number; body: number; lx: number; ly: number; lastMove: number; mining: boolean }>();
+  private others = new Map<string, { c: Container; ctl?: Player; fallback?: Graphics; nameTxt: Text; vip: number; skin: number; body: number; lx: number; ly: number; lastMove: number; mining: boolean }>();
   private miningOreId: number | null = null;
   private miningBar!: Container;
   private miningBarG!: Graphics;
@@ -146,6 +154,7 @@ export class World {
   get body(): number { return this.state?.players?.get(this.room.sessionId)?.body ?? 0; }
   get durability(): number { return this.state?.players?.get(this.room.sessionId)?.durability ?? 100; }
   get pname(): string { return this.state?.players?.get(this.room.sessionId)?.name ?? ""; }
+  get vip(): number { return this.state?.players?.get(this.room.sessionId)?.vip ?? 0; }
 
   upgrade(): void { this.room.send("upgrade"); }
 
@@ -222,12 +231,13 @@ export class World {
       fallback.tint = SKINS[p.skin]?.color ?? 0xffffff;
       c.addChild(fallback);
     }
-    const name = new Text({ text: p.name, style: { fontFamily: "system-ui, sans-serif", fontSize: 11, fontWeight: "700", fill: "#fff", stroke: { color: "#1a1330", width: 3 } } });
+    const lbl = vipLabel(p.name, p.vip);
+    const name = new Text({ text: lbl.text, style: { fontFamily: "system-ui, sans-serif", fontSize: 11, fontWeight: "700", fill: lbl.fill, stroke: { color: "#1a1330", width: 3 } } });
     name.anchor.set(0.5, 1); name.y = -TILE * 1.4;
     c.addChild(name);
     c.x = p.x; c.y = p.y; c.zIndex = p.y;
     this.entities.addChild(c);
-    this.others.set(sid, { c, ctl, fallback, skin: p.skin, body: p.body, lx: p.x, ly: p.y, lastMove: 0, mining: false });
+    this.others.set(sid, { c, ctl, fallback, nameTxt: name, vip: p.vip, skin: p.skin, body: p.body, lx: p.x, ly: p.y, lastMove: 0, mining: false });
   }
   private updateOther(sid: string, p: NetPlayer): void {
     const o = this.others.get(sid);
@@ -236,6 +246,7 @@ export class World {
     o.c.x = p.x; o.c.y = p.y; o.c.zIndex = p.y;
     o.mining = p.miningOreId > 0;
     if (p.skin !== o.skin) { const t = SKINS[p.skin]?.color ?? 0xffffff; if (o.ctl) o.ctl.sprite.tint = t; else if (o.fallback) o.fallback.tint = t; o.skin = p.skin; }
+    if (p.vip !== o.vip) { const lbl = vipLabel(p.name, p.vip); o.nameTxt.text = lbl.text; o.nameTxt.style.fill = lbl.fill; o.vip = p.vip; }
     if (o.ctl) {
       if (p.body !== o.body) { o.ctl.setBody(p.body); o.ctl.sprite.tint = SKINS[p.skin]?.color ?? 0xffffff; o.body = p.body; }
       const moving = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5;
@@ -409,9 +420,10 @@ export class World {
     else this.drawPlayer(this.playerNode as Graphics);
     this.playerNode.x = this.px; this.playerNode.y = this.py; this.playerNode.zIndex = this.py;
     this.decayOthers(); // settle other players to idle when they stop sending positions
-    // username floating above the local player
-    const nm = this.pname;
-    if (this.nameLabel.text !== nm) this.nameLabel.text = nm;
+    // username floating above the local player (with VIP badge + tier colour)
+    const lbl = vipLabel(this.pname, this.vip);
+    if (this.nameLabel.text !== lbl.text) this.nameLabel.text = lbl.text;
+    if (this.nameLabel.style.fill !== lbl.fill) this.nameLabel.style.fill = lbl.fill;
     this.nameLabel.x = this.px; this.nameLabel.y = this.py - TILE * 2.1; this.nameLabel.zIndex = this.py + 0.5;
     // (no overlay pickaxe — the character's mining animation already swings one)
 

@@ -404,6 +404,7 @@
     <button id="redeemAction">💱 Redeem</button>
     <button id="otc" class="ghost">🤝 OTC Market</button>
     <button id="zoneBtn">🗺️ Zones</button>
+    <button id="vipBtn" class="ghost">👑 VIP Club</button>
   </div>
   <button id="menuBtn">☰ Menu</button>
 
@@ -415,6 +416,19 @@
       <button class="zonebtn" data-zone="village" style="width:100%;margin-top:8px">🏘️ Village — free for everyone</button>
       <button class="zonebtn" data-zone="cave" style="width:100%;margin-top:8px">⛏ The Cave — hold ≥100 $HASHROCK · 2× ore</button>
       <button class="zonebtn" data-zone="forge" style="width:100%;margin-top:8px">🌋 The Forge — hold ≥500 $HASHROCK · 3× ore</button>
+    </div>
+  </div>
+
+  <!-- VIP Club -->
+  <div id="vipModal" class="modal">
+    <div class="panel card">
+      <button class="x" id="vipClose">×</button>
+      <div class="phead">👑 VIP Club</div>
+      <div id="vipStatus" style="margin:6px 0 4px;font-weight:700"></div>
+      <div id="vipNext" style="opacity:.8;font-size:13px;margin-bottom:8px"></div>
+      <div id="vipTiers"></div>
+      <div style="opacity:.65;font-size:12px;margin-top:10px">VIP is status &amp; access only — your tier follows the $HASHROCK you hold. It never boosts earnings (fair for everyone).</div>
+      <a id="vipBuy" href="https://www.orynth.dev/projects/hashrock" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:10px"><button style="width:100%">💎 Get $HASHROCK</button></a>
     </div>
   </div>
 
