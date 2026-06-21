@@ -15,11 +15,11 @@ export const RARITY_COLOR: Record<Rarity, string> = {
 // Grey (id 0) is the free starter; the rest are bought with $HASHROCK (price in $HASHROCK).
 export const SKINS: Cosmetic[] = [
   { id: 0, name: "Grey",    rarity: "Common",    color: 0xffffff, price: 0 },
-  { id: 1, name: "Crimson", rarity: "Common",    color: 0xff9a9a, price: 200 },
-  { id: 2, name: "Emerald", rarity: "Rare",      color: 0x9af5b0, price: 500 },
-  { id: 3, name: "Azure",   rarity: "Rare",      color: 0x8fc8ff, price: 1_000 },
-  { id: 4, name: "Gold",    rarity: "Epic",      color: 0xffe08a, price: 2_500 },
-  { id: 5, name: "Shadow",  rarity: "Legendary", color: 0xb0a0e0, price: 6_000 },
+  { id: 1, name: "Crimson", rarity: "Common",    color: 0xff9a9a, price: 20 },
+  { id: 2, name: "Emerald", rarity: "Rare",      color: 0x9af5b0, price: 50 },
+  { id: 3, name: "Azure",   rarity: "Rare",      color: 0x8fc8ff, price: 100 },
+  { id: 4, name: "Gold",    rarity: "Epic",      color: 0xffe08a, price: 250 },
+  { id: 5, name: "Shadow",  rarity: "Legendary", color: 0xb0a0e0, price: 600 },
 ];
 export const skinPrice = (id: number): number => SKINS[id]?.price ?? 0;
 
@@ -44,10 +44,10 @@ export const HATS: Cosmetic[] = [
 
 export const AXES: Axe[] = [
   { id: 0, name: "Wooden",  color: "#b98a4a", mult: 1.0, price: 0 },
-  { id: 1, name: "Stone",   color: "#9aa0a8", mult: 1.2, price: 300 },
-  { id: 2, name: "Iron",    color: "#d8dde6", mult: 1.5, price: 1_000 },
-  { id: 3, name: "Gold",    color: "#ffd23f", mult: 1.9, price: 3_000 },
-  { id: 4, name: "Diamond", color: "#8fe4f5", mult: 2.4, price: 8_000 },
+  { id: 1, name: "Stone",   color: "#9aa0a8", mult: 1.2, price: 30 },
+  { id: 2, name: "Iron",    color: "#d8dde6", mult: 1.5, price: 100 },
+  { id: 3, name: "Gold",    color: "#ffd23f", mult: 1.9, price: 300 },
+  { id: 4, name: "Diamond", color: "#8fe4f5", mult: 2.4, price: 800 },
 ];
 export const axePrice = (id: number): number => AXES[id]?.price ?? 0;
 
@@ -68,4 +68,4 @@ export const axeLevelMult = (lvl: number): number => 1 + (lvl - 1) * LEVEL_STEP;
 /** Effective mining throughput = tier mult × level mult. */
 export const effAxeMult = (tier: number, lvl: number): number => axeMult(tier) * axeLevelMult(lvl);
 /** $HASHROCK cost to go from `fromLvl` → `fromLvl+1` for a tier (scales with tier & level). */
-export const axeUpgradeCost = (tier: number, fromLvl: number): number => (tier + 1) * fromLvl * 80;
+export const axeUpgradeCost = (tier: number, fromLvl: number): number => (tier + 1) * fromLvl * 8;

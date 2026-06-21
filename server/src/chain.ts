@@ -202,12 +202,25 @@ export async function verifyMarketTx(sig: string, seller: string, sellerAmount: 
   return { buyer: source };
 }
 
-/** verifyDeposit with retry, since a freshly-sent tx may not be confirmed yet. */
-export async function verifyDepositRetry(sig: string, tries = 6, delayMs = 2500): Promise<{ amount: number; source: string } | null> {
+/** verifyMarketTx with the same generous retry window as deposits — a P2P buy on mobile has the same
+ *  broadcast/confirm lag, and this path had NO retry at all (so it failed even more readily). */
+export async function verifyMarketTxRetry(sig: string, seller: string, sellerAmount: number, fee: number, tries = 16, delayMs = 2500): Promise<{ buyer: string } | null> {
   for (let i = 0; i < tries; i++) {
-    const r = await verifyDeposit(sig);
-    if (r) return r;
-    await new Promise((res) => setTimeout(res, delayMs));
+    try { const r = await verifyMarketTx(sig, seller, sellerAmount, fee); if (r) return r; } catch { /* transient RPC hiccup — retry */ }
+    if (i < tries - 1) await new Promise((res) => setTimeout(res, delayMs));
+  }
+  return null;
+}
+
+/** verifyDeposit with retry, since a freshly-sent tx may not be confirmed yet. The window must be
+ *  generous: on MOBILE (Phantom deeplink, app backgrounding, slower networks) the wallet broadcasts
+ *  and the tx reaches "confirmed" noticeably later than on desktop — a short window was the cause of
+ *  spurious "payment not verified" failures for mobile users. ~40s covers mobile + mainnet congestion.
+ *  A transient RPC error on one poll must NOT abort the whole verify — swallow it and keep retrying. */
+export async function verifyDepositRetry(sig: string, tries = 16, delayMs = 2500): Promise<{ amount: number; source: string } | null> {
+  for (let i = 0; i < tries; i++) {
+    try { const r = await verifyDeposit(sig); if (r) return r; } catch { /* transient RPC hiccup — retry */ }
+    if (i < tries - 1) await new Promise((res) => setTimeout(res, delayMs));
   }
   return null;
 }

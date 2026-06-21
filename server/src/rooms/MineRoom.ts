@@ -37,7 +37,7 @@ const UPGRADE_COST = 500; // DEMO sink (coins). Real upgrades = on-chain $HASHRO
 const REDEEM_MIN = Number(process.env.MIN_REDEEM ?? 10);
 const DUR_PER_ORE = 2;     // axe durability lost per ore fully mined
 const DUR_PENALTY = 0.35;  // throughput multiplier when durability hits 0
-const REPAIR_COST = Number(process.env.REPAIR_COST ?? 100); // $HASHROCK to fully repair (sink → 95% pool / 5% creator)
+const REPAIR_COST = Number(process.env.REPAIR_COST ?? 10); // $HASHROCK to fully repair (sink → 95% pool / 5% creator)
 const REWARD_RATE = DAILY_EMISSION / ORE_PER_DAY;
 const MINE_RANGE = TILE * 1.6;
 const MOVE_SPEED = 130; // px/s — server validates client moves against this (+ tolerance)
@@ -335,7 +335,7 @@ export class MineRoom extends Room<MineState> {
     if (!listing) return void client.send("marketErr", { msg: "listing already sold/cancelled" });
     const fee = Math.floor(listing.price * MARKET_FEE), sellerAmount = listing.price - fee, cut = Math.round(fee * CREATOR_FEE);
     try {
-      const v = await chain.verifyMarketTx(sig, listing.sellerId, sellerAmount, fee);
+      const v = await chain.verifyMarketTxRetry(sig, listing.sellerId, sellerAmount, fee);
       if (!v || v.buyer !== dest) return void client.send("marketErr", { msg: "payment not verified" });
       const r = await db.settleMarketSale(listing.id, playerId, fee, cut, sig);
       if (!r.ok) return void client.send("marketErr", { msg: r.reason || "settle failed" });
