@@ -225,7 +225,7 @@ const FLOOR = T_GRASS; // floor reuses code 0; the zone's tileset decides how it
 
 // Shared cellular-automata cavern carver. `seed` shifts the layout (each zone gets a different
 // cave); `flora` adds mushrooms/crystals (cave) vs bare rock (forge). buildCave/buildForge wrap it.
-function carveCaverns(seed: number, decorKind: "cave" | "forge", boulderRate: number, decorRate: number): VillageData {
+function carveCaverns(seed: number, decorKind: "cave" | "forge"): VillageData {
   const W = MAP_W, H = MAP_H, N = W * H;
   const terrain = new Uint8Array(N);
   const blocked = new Uint8Array(N);
@@ -358,16 +358,51 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge", boulderRate: nu
       else if (r < 0.027) putDecor(x, y, 5);                            // crucible (rare)
     }
   } else {
-    // Cave: sparse, clean dressing — occasional standalone boulder + light loose-stone scatter.
-    for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
-      const i = idx(x, y);
-      if (terrain[i] !== FLOOR) continue;
-      if (Math.abs(x - C.x) < 4 && Math.abs(y - C.y) < 4) continue;
-      const r = cellHash(x + 11 + seed, y + 5 + seed);
-      if (r < boulderRate) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 2) }); blocked[i] = 1; } // boulder
-      else if (r < boulderRate + 0.013) decor.push({ gx: x, gy: y, type: PropType.ROCK, v: vh(x, y, 8) }); // loose stones
-      else if (cellHash(x + 5 + seed, y + 17 + seed) < decorRate)
-        decor.push({ gx: x, gy: y, type: PropType.CAVE_DECOR, v: vh(x, y, 6) });
+    // ── Organized cave dressing. Like the forge, props are placed in deliberate ORGANIC clusters
+    // (groves), not random scatter: mushroom groves (a big/giant mushroom ringed by small ones),
+    // red-coral patches, and stalagmite clusters, on a jittered coarse grid. Between groves a light
+    // sprinkle of tiny mushrooms / pebbles / stalagmites / rare moss keeps the floor alive.
+    // caveRocks idx: 0..1 med mushroom, 2..3 coral, 4..5 giant mushroom, 6 big coral.
+    // caveDecor idx: 0..2 small mushroom, 3..4 tiny, 5 tall stalagmite, 6 small stalagmite, 7..8 small coral, 9..10 pebble, 11 moss.
+    const rv = (k: number) => (k + 0.5) / 7, dv = (k: number) => (k + 0.5) / 12;
+    const isFloor = (x: number, y: number) => inB(x, y) && terrain[idx(x, y)] === FLOOR && !blocked[idx(x, y)];
+    const clearing = (x: number, y: number, r: number) => {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!isFloor(x + dx, y + dy)) return false;
+      return true;
+    };
+    const putRock = (x: number, y: number, k: number) => { if (isFloor(x, y)) { props.push({ gx: x, gy: y, type: PropType.ROCK, v: rv(k) }); blocked[idx(x, y)] = 1; } };
+    const putDecor = (x: number, y: number, k: number) => { if (isFloor(x, y)) decor.push({ gx: x, gy: y, type: PropType.CAVE_DECOR, v: dv(k) }); };
+    const ring: [number, number][] = [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]];
+    const STEP = 7;
+    for (let gy = 6; gy < H - 6; gy += STEP) for (let gx = 6; gx < W - 6; gx += STEP) {
+      const hsh = cellHash(gx * 5 + seed + 1, gy * 11 + seed + 3);
+      const jx = gx + Math.floor(cellHash(gx + 2, gy + 1) * 5) - 2;
+      const jy = gy + Math.floor(cellHash(gx + 4, gy + 3) * 5) - 2;
+      if (!farSpawn(jx, jy)) continue;
+      if (hsh < 0.24) {                                   // mushroom grove
+        if (clearing(jx, jy, 1)) {
+          const giant = cellHash(jx, jy) < 0.30;
+          putRock(jx, jy, giant ? (cellHash(jx + 1, jy) < 0.5 ? 4 : 5) : (cellHash(jx + 1, jy) < 0.5 ? 0 : 1));
+          for (const [dx, dy] of ring) if (cellHash(jx + dx + 7, jy + dy + 3) < 0.45) putDecor(jx + dx, jy + dy, Math.floor(cellHash(jx + dx, jy + dy) * 3)); // small mushrooms
+        }
+      } else if (hsh < 0.42) {                            // red-coral patch
+        if (clearing(jx, jy, 1)) {
+          putRock(jx, jy, cellHash(jx, jy) < 0.35 ? 6 : (cellHash(jx, jy) < 0.7 ? 2 : 3));
+          for (const [dx, dy] of ring) if (cellHash(jx + dx + 3, jy + dy + 9) < 0.4) putDecor(jx + dx, jy + dy, 7 + Math.floor(cellHash(jx + dx, jy + dy) * 2)); // small coral
+        }
+      } else if (hsh < 0.54) {                            // stalagmite cluster (decor only)
+        putDecor(jx, jy, 5);
+        for (const [dx, dy] of ring) if (cellHash(jx + dx + 5, jy + dy + 5) < 0.5) putDecor(jx + dx, jy + dy, cellHash(jx + dx, jy) < 0.5 ? 5 : 6);
+      }
+    }
+    // light background dressing between groves
+    for (let y = 3; y < H - 3; y++) for (let x = 3; x < W - 3; x++) {
+      if (!isFloor(x, y) || !farSpawn(x, y)) continue;
+      const r = cellHash(x + 5 + seed, y + 17 + seed);
+      if (r < 0.010) putDecor(x, y, 3 + Math.floor(cellHash(x, y) * 2));        // tiny mushroom
+      else if (r < 0.018) putDecor(x, y, 9 + Math.floor(cellHash(x, y + 1) * 2)); // pebbles
+      else if (r < 0.022) putDecor(x, y, cellHash(x, y) < 0.5 ? 5 : 6);          // stray stalagmite
+      else if (r < 0.025) putDecor(x, y, 11);                                    // moss patch (rare)
     }
   }
 
@@ -380,5 +415,5 @@ function carveCaverns(seed: number, decorKind: "cave" | "forge", boulderRate: nu
 }
 
 // Cave zone (seed 0 = the original cave, unchanged) + Forge zone (different seed, no flora).
-export function buildCave(): VillageData { return carveCaverns(0, "cave", 0.012, 0.035); }
-export function buildForge(): VillageData { return carveCaverns(73, "forge", 0.014, 0.06); } // denser obsidian + lava crystals
+export function buildCave(): VillageData { return carveCaverns(0, "cave"); }
+export function buildForge(): VillageData { return carveCaverns(73, "forge"); }

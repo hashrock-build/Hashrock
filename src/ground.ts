@@ -90,6 +90,7 @@ export class GroundLayer {
       floor: (gx, gy) => { const b = Math.round((0.5 + vnoise(gx, gy, 7, 3) * 0.22) * 255); return (b << 16) | (b << 8) | b; }, // grey stone
       fill: () => 0x241d15,   // near-black rock interior
       rim: 0x6a5640, rimA: 0.5, // warm rock rim
+      grass: { color: 0x6aa83e, width: 3 }, // green moss ring hugging the floor side of every "hill" edge
     });
   }
   private buildForge(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles) {
@@ -103,7 +104,7 @@ export class GroundLayer {
   // Shared supersampled cavern render (rock void OR lava lake, by palette). Uses the DIRT dual-grid
   // (brown, no green) so tinting is clean. Supersampled 2× + blurred → smooth rounded edges.
   private cavernGround(app: Application, mapW: number, mapH: number, terrain: Uint8Array, g: GroundTiles,
-    P: { floor: (gx: number, gy: number) => number; fill: (fx: number, fy: number) => number; rim: number; rimA: number }) {
+    P: { floor: (gx: number, gy: number) => number; fill: (fx: number, fy: number) => number; rim: number; rimA: number; grass?: { color: number; width: number } }) {
     const at = (gx: number, gy: number) => (gx >= 0 && gx < mapW && gy >= 0 && gy < mapH ? terrain[gy * mapW + gx] : T_WALL);
 
     // ── supersampled + blurred wall field (rounded contours) ──
@@ -149,6 +150,24 @@ export class GroundLayer {
           }
 
         const fox = ox * S, foy = oy * S, fc = CHUNK * S;
+        // grass ring — a moss border on the FLOOR side, hugging every wall ("hill") edge. Width is in
+        // fine cells (2 = one tile); alpha is strongest right at the rock and fades outward, so it reads
+        // as grass creeping out from the hills. Cave only (forge has no grass).
+        if (P.grass) {
+          const R = P.grass.width;
+          for (let fy = foy; fy < foy + fc && fy < fh; fy++)
+            for (let fx = fox; fx < fox + fc && fx < fw; fx++) {
+              if (w(fx, fy)) continue; // floor side only
+              let d = R + 1;
+              for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++)
+                if (w(fx + dx, fy + dy)) { const dd = Math.max(Math.abs(dx), Math.abs(dy)); if (dd < d) d = dd; }
+              if (d > R) continue; // too far from any wall
+              const s = new Sprite(g.caveFloor);
+              s.x = (fx - fox) * SUB; s.y = (fy - foy) * SUB; s.setSize(SUB);
+              s.tint = P.grass.color; s.alpha = 1 - (d - 1) / (R + 1); // edge = opaque, fading out
+              c.addChild(s);
+            }
+        }
         // opaque interior — fine cells fully surrounded (rock void / molten core)
         for (let fy = foy; fy < foy + fc && fy < fh; fy++)
           for (let fx = fox; fx < fox + fc && fx < fw; fx++) {

@@ -28,7 +28,8 @@ export interface WorldProps {
   scarecrow: PropDef;
   crops: PropDef[];
   decor: PropDef[];
-  caveDecor: PropDef[]; // M5 cave flora/crystals — mushrooms + gems (sliced from Vegetation.png)
+  caveRocks: PropDef[]; // M5 cave BLOCKING growths — mushrooms + coral (Cave pack)
+  caveDecor: PropDef[]; // M5 cave ground dressing — small mushrooms / coral / stalagmites / pebbles / moss
   forgeDecor: PropDef[]; // M5 forge lava crystal spikes
   forgeRocks: PropDef[]; // M5 forge obsidian boulders (blocking)
 }
@@ -68,17 +69,38 @@ export async function loadProps(): Promise<WorldProps> {
   ]);
   const decor = await loadAll("decor", man.decor);
 
-  // M5 cave flora/crystals — cut by EXACT sprite bounds (pixel rects from a component scan) so
-  // nothing is clipped (the 16px grid sliced through the mushroom stems). anchorY:1 = feet on ground.
-  const veg: Texture = await Assets.load("/assets/props/Vegetation.png");
-  veg.source.scaleMode = "nearest";
-  const vpx = (x: number, y: number, w: number, h: number) => new Texture({ source: veg.source, frame: new Rectangle(x, y, w, h) });
-  const caveDecor = [
-    def(vpx(21, 341, 5, 7), { anchorY: 1 }),                  // small mushroom
-    def(vpx(36, 340, 8, 9), { anchorY: 1 }),                  // mushroom
-    def(vpx(49, 338, 14, 14), { anchorY: 1 }),               // big mushroom
-    def(vpx(3, 353, 11, 14), { anchorY: 1, tint: 0xc77dff }), // amethyst crystal (red gem → purple)
-    def(vpx(19, 353, 11, 14), { anchorY: 1 }),               // blue crystal gem
+  // M5 cave flora — REAL art from the dedicated Pixel Crawler Cave pack (Cave_Props.png =
+  // purple mushrooms, Cave_Tiles.png = red coral / stalagmites / pebbles / moss), cut pixel-exact
+  // (component scan, no clipping). caveRocks = BLOCKING; caveDecor = ground dressing.
+  // ⚠ LIST LENGTHS ARE LOCKED (caveRocks=7, caveDecor=12): shared/mapgen encodes the variant index
+  // as v=(k+0.5)/N, so N here MUST equal the count mapgen divides by, or indices shift.
+  const cp: Texture = await Assets.load("/assets/props/Cave_Props.png");
+  const ct: Texture = await Assets.load("/assets/props/Cave_Tiles.png");
+  cp.source.scaleMode = "nearest"; ct.source.scaleMode = "nearest";
+  const ppx = (x: number, y: number, w: number, h: number) => new Texture({ source: cp.source, frame: new Rectangle(x, y, w, h) });
+  const tpx = (x: number, y: number, w: number, h: number) => new Texture({ source: ct.source, frame: new Rectangle(x, y, w, h) });
+  const caveRocks = [                                  // BLOCKING cave growths (mushrooms + coral)
+    def(ppx(196, 49, 53, 45), { anchorY: 0.95 }),   // 0 medium mushroom
+    def(ppx(196, 1, 53, 45), { anchorY: 0.95 }),    // 1 medium mushroom (variant)
+    def(tpx(148, 114, 41, 44), { anchorY: 0.95 }),  // 2 red coral (medium)
+    def(tpx(193, 117, 46, 41), { anchorY: 0.95 }),  // 3 red coral cluster
+    def(ppx(99, 3, 87, 88), { anchorY: 0.96, scale: 1.7 }),   // 4 GIANT mushroom (landmark)
+    def(ppx(226, 96, 60, 96), { anchorY: 0.97, scale: 1.7 }), // 5 tall mushroom (landmark)
+    def(tpx(97, 117, 46, 59), { anchorY: 0.95 }),   // 6 big red coral (landmark)
+  ];
+  const caveDecor = [                                 // non-blocking ground dressing
+    def(ppx(291, 3, 27, 28), { anchorY: 0.95 }),    // 0 small mushroom
+    def(ppx(322, 2, 27, 28), { anchorY: 0.95 }),    // 1 small mushroom
+    def(ppx(291, 35, 27, 28), { anchorY: 0.95 }),   // 2 small mushroom (drip)
+    def(ppx(257, 64, 14, 16), { anchorY: 0.95 }),   // 3 tiny mushroom
+    def(ppx(291, 68, 10, 11), { anchorY: 0.95 }),   // 4 tiny mushroom
+    def(tpx(210, 16, 12, 32), { anchorY: 1 }),      // 5 tall stalagmite
+    def(tpx(226, 32, 12, 16), { anchorY: 1 }),      // 6 small stalagmite
+    def(tpx(149, 162, 23, 28), { anchorY: 0.95 }),  // 7 small coral
+    def(tpx(214, 163, 23, 24), { anchorY: 0.95 }),  // 8 small coral
+    def(tpx(116, 24, 8, 7), { anchorY: 0.85 }),     // 9 pebble
+    def(tpx(194, 67, 12, 8), { anchorY: 0.85 }),    // 10 pebbles
+    def(tpx(179, 209, 74, 78), { anchorY: 0.6, scale: 1.4 }), // 11 moss patch (flat ground)
   ];
   // forge props — REAL forge art cut pixel-exact (component scan, no clipping) from the dedicated
   // Pixel Crawler Forge pack tileset (public/assets/props/Forge_Tiles.png). No recolour needed —
@@ -118,6 +140,7 @@ export async function loadProps(): Promise<WorldProps> {
     scarecrow: def(scarecrow, { anchorY: 0.92 }),
     crops: cropTex.map((t) => def(t, { anchorY: 0.8 })),
     decor: decor.map((t) => def(t, { anchorY: 0.88 })),
+    caveRocks,
     caveDecor,
     forgeDecor,
     forgeRocks,

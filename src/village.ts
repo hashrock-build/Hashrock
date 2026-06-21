@@ -27,7 +27,7 @@ export function buildVillage(P: WorldProps): Village {
 
 /** M5 cave/dungeon zone — same adapter, different deterministic map (shared/mapgen buildCave). */
 export function buildCave(P: WorldProps): Village {
-  return adapt(gen.buildCave(), P);
+  return adapt(gen.buildCave(), P, "cave");
 }
 
 /** M5 forge/volcanic zone — lava-cavern layout (shared/mapgen buildForge). */
@@ -42,7 +42,7 @@ function adapt(g: gen.VillageData, P: WorldProps, zone = "village"): Village {
     [gen.PropType.FLOWER]: P.flowers,
     [gen.PropType.FERN]: P.ferns,
     [gen.PropType.TUFT]: P.tufts,
-    [gen.PropType.ROCK]: zone === "forge" ? P.forgeRocks : P.rocks, // obsidian boulders in the forge
+    [gen.PropType.ROCK]: zone === "forge" ? P.forgeRocks : zone === "cave" ? P.caveRocks : P.rocks, // forge clutter / cave growths / village rocks
     [gen.PropType.HOUSE]: P.houses,
     [gen.PropType.DECOR]: P.decor,
     [gen.PropType.CROP]: P.crops,
