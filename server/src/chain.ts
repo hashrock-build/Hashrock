@@ -61,6 +61,12 @@ export async function initChain(): Promise<void> {
 // derive their position from it (the on-chain source of randomness). ---
 let latestBlockhash = "";
 export const currentBlockhash = (): string => latestBlockhash;
+// Blockhash for a CLIENT-signed tx (purchase/market): prefer the relayer's cached value (≤30s old,
+// well within validity, and the wallet refreshes it on send anyway) so we DON'T hit the RPC on every
+// action — a per-call getLatestBlockhash was failing on RPC blips and breaking repair/purchases.
+async function txBlockhash(): Promise<string> {
+  return latestBlockhash || (await conn.getLatestBlockhash()).blockhash;
+}
 export function startBlockhashRelayer(intervalMs = 30000): void {
   // 30s, not 2s: ore spawns at most every 20–60s and only needs a *recent* blockhash, so polling
   // every 2s just burned the RPC quota (429 storms that stalled logins). 30s is plenty fresh.
@@ -172,7 +178,7 @@ export async function buildPurchaseTx(payer: string, amount: number): Promise<st
   const payerAta = await getAssociatedTokenAddress(mint, payerPk);
   const tx = new Transaction().add(createTransferInstruction(payerAta, treasuryAta, payerPk, toRaw(amount)));
   tx.feePayer = payerPk;
-  tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+  tx.recentBlockhash = await txBlockhash();
   return tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
 }
 
@@ -189,7 +195,7 @@ export async function buildMarketTx(buyer: string, seller: string, sellerAmount:
     createTransferInstruction(buyerAta, treasuryAta, buyerPk, toRaw(fee)),
   );
   tx.feePayer = buyerPk;
-  tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+  tx.recentBlockhash = await txBlockhash();
   return tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64");
 }
 
