@@ -69,6 +69,11 @@ export class MineRoom extends Room<MineState> {
   private redeeming = new Set<string>(); // sessionIds with a redeem in flight (block concurrent/spam redeems)
 
   async onCreate(options?: { zone?: string }): Promise<void> {
+    // Survival cap: Colyseus broadcasts room state to every client each patch (cost ∝ clients), so an
+    // unbounded bot flood saturates the event loop until the server stops responding. Cap clients per
+    // room so the server stays UP under abuse. Colyseus auto-creates additional room instances for the
+    // same zone when one fills, so legit demand still scales — but each instance stays serveable.
+    this.maxClients = Number(process.env.ROOM_MAX_CLIENTS ?? 120);
     this.setState(new MineState());
     // NOTE: schema is created/migrated ONCE at boot (index.ts) before the server listens. Re-running
     // the DDL here per-room caused concurrent ALTERs to deadlock when several zones spin up at once.
@@ -139,6 +144,10 @@ export class MineRoom extends Room<MineState> {
     // IDENTITY = the wallet address, proven by an ed25519 signature. playerId MUST be a valid
     // Solana address whose signed login message verifies — otherwise reject the join. This binds
     // every account to a wallet only its owner can sign for (no UUID accounts, no impersonation).
+    // GLOBAL connection cap (survival under a bot flood): this is a single Node process, and Colyseus
+    // auto-creates more room instances when one fills, so a per-room cap alone doesn't bound total load.
+    // Reject joins past a global ceiling so the event loop stays responsive for everyone already in.
+    if (liveStats.online >= Number(process.env.GLOBAL_MAX_CLIENTS ?? 350)) throw new Error("server is full right now — try again in a minute");
     const addr = (opts.playerId || "").trim();
     const msg = opts.msg || "", sig = opts.sig || "";
     if (!chain.isValidAddress(addr)) throw new Error("connect a wallet to play");
@@ -479,6 +488,10 @@ export class MineRoom extends Room<MineState> {
 
   // REDEEM: burn coins (authoritative) then release $HASHROCK from treasury; refund on failure.
   private async onRedeem(client: Client, m: { amount: number }): Promise<void> {
+    // Emergency kill-switch: a bot flood spamming redeem (each = an RPC call) was 429-storming the
+    // RPC and saturating the event loop → nobody could log in/play. Set REDEEM_ENABLED=false to pause
+    // withdrawals and shed that load while keeping the rest of the game up; re-enable once mitigated.
+    if (process.env.REDEEM_ENABLED === "false") return void client.send("redeemErr", { msg: "withdrawals are paused for ~1h while we mitigate abuse — your coins are safe" });
     const p = this.state.players.get(client.sessionId);
     const dest = this.wallet.get(client.sessionId);
     const amount = Math.floor(Number(m?.amount));

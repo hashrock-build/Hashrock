@@ -43,6 +43,7 @@ services:
       CAVE_MIN_HOLD: ${CAVE_MIN_HOLD:-100}   # M5: $HASHROCK a wallet must hold to enter the cave zone
       FORGE_MIN_HOLD: ${FORGE_MIN_HOLD:-500} # M5: higher VIP gate for the forge zone
       GARDEN_MIN_HOLD: ${GARDEN_MIN_HOLD:-1000} # M5: premium VIP gate for the garden zone
+      REDEEM_ENABLED: ${REDEEM_ENABLED:-true} # emergency kill-switch: set false to pause withdrawals (abuse mitigation)
       SOLVENCY_INTERVAL_MIN: ${SOLVENCY_INTERVAL_MIN:-10} # 1:1-backing reconciliation cadence (minutes)
       SOLVENCY_WEBHOOK_URL: ${SOLVENCY_WEBHOOK_URL:-}     # optional incoming webhook for solvency alerts
       SOLVENCY_TOL: ${SOLVENCY_TOL:-1}                    # allowed on-chain-above-DB dust before alerting
