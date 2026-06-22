@@ -66,6 +66,7 @@ export class MineRoom extends Room<MineState> {
   private wallet = new Map<string, string>(); // sessionId -> Solana address (for redeem)
   private dmg = new Map<number, Map<string, number>>(); // oreId -> (sessionId -> damage)
   private seenDeposits = new Set<string>(); // tx sigs already processed by the deposit watcher
+  private redeeming = new Set<string>(); // sessionIds with a redeem in flight (block concurrent/spam redeems)
 
   async onCreate(options?: { zone?: string }): Promise<void> {
     this.setState(new MineState());
@@ -489,6 +490,10 @@ export class MineRoom extends Room<MineState> {
     if (!Number.isFinite(amount) || amount <= 0) return void client.send("redeemErr", { msg: "invalid amount" });
     if (amount < REDEEM_MIN) return void client.send("redeemErr", { msg: `min redeem is ${REDEEM_MIN}` });
     if (amount > p.coins) return void client.send("redeemErr", { msg: "not enough coins" });
+    // one redeem in flight per player — a release takes seconds to confirm; concurrent/spam redeems
+    // (bots) could double-spend or pile load. Reject until the current one settles.
+    if (this.redeeming.has(client.sessionId)) return void client.send("redeemErr", { msg: "a redeem is already processing — wait" });
+    this.redeeming.add(client.sessionId);
     const playerId = this.pid.get(client.sessionId)!;
     p.coins -= amount;
     await db.persistRedeem(playerId, amount);
@@ -510,6 +515,8 @@ export class MineRoom extends Room<MineState> {
       await db.refundRedeem(playerId, amount);
       client.send("redeemErr", { msg: "on-chain transfer failed (refunded)" });
       console.error("[redeem]", e);
+    } finally {
+      this.redeeming.delete(client.sessionId); // release the per-player redeem lock on every exit path
     }
   }
 

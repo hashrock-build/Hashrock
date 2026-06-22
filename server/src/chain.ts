@@ -154,14 +154,25 @@ async function treasurySend(instructions: TransactionInstruction[], hardCapMs = 
   const sig = await conn.sendRawTransaction(raw, { skipPreflight: false, maxRetries: 0 }); // preflight catches bad txs before they cost anything
   const stop = Date.now() + hardCapMs;
   while (Date.now() < stop) {
-    const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true })).value;
-    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig; // ✅ settled
-    if (st?.err) throw new Error("tx failed on-chain: " + JSON.stringify(st.err)); // erred → no funds moved → safe to refund
-    if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) throw new Error("blockhash expired — tx can never land (safe to refund)");
+    // CRITICAL: only a PROVEN-dead outcome (tx erred on-chain, or blockhash expired) may throw out of
+    // here → the caller refunds. A transient RPC error during confirmation does NOT prove the tx is
+    // dead — if we let it escape, the caller refunds while the tx actually LANDED = treasury drain
+    // (this is exactly what mass-drained the treasury). So swallow transient RPC errors and keep
+    // polling; if it never resolves within hardCap we throw TxUncertainError (caller must NOT refund).
+    try {
+      const st = (await conn.getSignatureStatus(sig, { searchTransactionHistory: true })).value;
+      if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return sig; // ✅ settled
+      if (st?.err) throw new Error("tx failed on-chain: " + JSON.stringify(st.err)); // erred → no funds moved → safe to refund
+      if ((await conn.getBlockHeight("confirmed")) > lastValidBlockHeight) throw new Error("blockhash expired — tx can never land (safe to refund)");
+    } catch (e) {
+      const msg = (e as Error)?.message || "";
+      if (msg.startsWith("tx failed on-chain") || msg.startsWith("blockhash expired")) throw e; // PROVEN dead → safe to refund
+      // otherwise: transient RPC error — DO NOT propagate (would risk a refund of a landed tx). Retry.
+    }
     await conn.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }).catch(() => {}); // re-broadcast the SAME tx (idempotent)
     await new Promise((r) => setTimeout(r, 2000));
   }
-  throw new TxUncertainError(sig); // near-impossible (cap >> blockhash validity); never refund on this
+  throw new TxUncertainError(sig); // exhausted the window without proof either way → never refund on this
 }
 
 /** Send `amount` $HASHROCK from the treasury to `dest`. Returns the tx signature. */
